@@ -31,6 +31,8 @@ def build_session(config: ResyConfig) -> Session:
         "X-origin": "https://resy.com",
         "Referrer": "https://resy.com/",
         "Accept": "application/json, text/plain, */*",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0",
+        "Cache-Control": "no-cache",
     }
 
     session.headers.update(headers)
@@ -81,6 +83,12 @@ class ResyApiAccess:
             )
 
         parsed_resp = FindResponseBody(**resp.json())
+
+        if parsed_resp.results.venues:
+            slots = parsed_resp.results.venues[0].slots
+            logger.info(f"Available slots: {[slot.date.start for slot in slots]}")
+        else:
+            logger.info("No venues returned in response.")
 
         return parsed_resp.results.venues[0].slots
 

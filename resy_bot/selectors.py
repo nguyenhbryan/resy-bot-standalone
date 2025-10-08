@@ -18,6 +18,7 @@ class SimpleSelector(AbstractSelector):
         simple selection algo that assumes a sorted list of slots
         if preferred slot is provided, that is the only selectable option
         """
+        
         window_timedelta = timedelta(hours=request.window_hours)
         ideal_datetime = datetime(
             request.target_date.year,
@@ -31,7 +32,10 @@ class SimpleSelector(AbstractSelector):
 
         last_diff = None
         last_slot = None
-
+        print(f"ideal_datetime: {ideal_datetime}, min_time: {min_time}, max_time: {max_time}")
+        print(f"preferred_type: {request.preferred_type}")
+        for slot in slots:
+            print(f"Slot time: {slot.date.start}, type: {slot.config.type}")
         for slot in slots:
             diff = slot.date.start - ideal_datetime
             matches_preferred_type = (
