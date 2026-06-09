@@ -1,7 +1,7 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from datetime import datetime, date, timedelta
 
-from pydantic import BaseModel, validator, root_validator
+from pydantic import BaseModel, validator, model_validator, field_validator
 
 
 class ResyConfig(BaseModel):
@@ -23,18 +23,28 @@ class ReservationRequest(BaseModel):
     window_hours: int
     prefer_early: bool
     preferred_type: Optional[str]
-    ideal_date: Optional[date]
-    days_in_advance: Optional[int]
+    ideal_date: Optional[date] = None
+    days_in_advance: Optional[int] = None
 
-    @root_validator
-    def validate_target_date(cls, data: Dict) -> Dict:
-        has_date = data["ideal_date"] is not None
-        has_waiting_pd = data["days_in_advance"] is not None
+    @model_validator(mode="before")
+    def validate_target_date(cls, values: Dict) -> Dict:
+        # Coerce common date string formats to `date`
+        ideal = values.get("ideal_date")
+        if isinstance(ideal, str):
+            for fmt in ("%Y-%m-%d", "%m-%d-%Y", "%m/%d/%Y"):
+                try:
+                    values["ideal_date"] = datetime.strptime(ideal, fmt).date()
+                    break
+                except Exception:
+                    continue
+
+        has_date = values.get("ideal_date") is not None
+        has_waiting_pd = values.get("days_in_advance") is not None
 
         if has_date and has_waiting_pd:
             raise ValueError("Must only provide one of ideal_date or days_in_advance")
         elif has_date or has_waiting_pd:
-            return data
+            return values
 
         raise ValueError("Must provide ideal_date or days_in_advance")
 
@@ -95,6 +105,24 @@ class SlotConfig(BaseModel):
     id: str
     type: str
     token: str
+
+    @field_validator("id", mode="before")
+    def coerce_id(cls, v: Any) -> str:
+        if v is None:
+            return v
+        return str(v)
+
+    @field_validator("type", mode="before")
+    def coerce_type(cls, v: Any) -> str:
+        if v is None:
+            return v
+        return str(v)
+
+    @field_validator("token", mode="before")
+    def coerce_token(cls, v: Any) -> str:
+        if v is None:
+            return v
+        return str(v)
 
 
 class SlotDate(BaseModel):
