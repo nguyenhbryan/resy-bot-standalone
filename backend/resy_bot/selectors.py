@@ -2,8 +2,8 @@ from datetime import datetime, timedelta
 from typing import List
 from abc import ABC, abstractmethod
 
-from resy_bot.errors import NoSlotsError
-from resy_bot.models import Slot, ReservationRequest
+from backend.resy_bot.errors import NoSlotsError
+from backend.resy_bot.models import Slot, ReservationRequest
 
 
 class AbstractSelector(ABC):

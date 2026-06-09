@@ -1,8 +1,12 @@
 from typing import Dict, List, Optional, Any
 from datetime import datetime, date, timedelta
+from enum import Enum
 
 from pydantic import BaseModel, validator, model_validator, field_validator
 
+class BookingMethod(str, Enum):
+    MONITOR = "monitor";
+    SCHEDULED = "scheduled";
 
 class ResyConfig(BaseModel):
     api_key: str
@@ -25,6 +29,7 @@ class ReservationRequest(BaseModel):
     preferred_type: Optional[str]
     ideal_date: Optional[date] = None
     days_in_advance: Optional[int] = None
+    method: BookingMethod
 
     @model_validator(mode="before")
     def validate_target_date(cls, values: Dict) -> Dict:

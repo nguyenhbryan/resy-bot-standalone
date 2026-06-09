@@ -4,10 +4,11 @@
   "venue_id": "74751",
   "window_hours": 2,
   "prefer_early": false,
-  "ideal_date": "07-07-2026",
+  "ideal_date": "08-01-2026",
   "ideal_hour": 18,
   "ideal_minute": 0,
-  "preferred_type": null
+  "preferred_type": null,
+  "method": "monitor"
 },
   "expected_drop_hour": "14",
   "expected_drop_minute": "39"

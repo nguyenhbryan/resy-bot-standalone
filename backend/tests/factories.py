@@ -2,7 +2,7 @@ import factory
 from datetime import date, datetime
 from random import randint
 
-from resy_bot.models import (
+from backend.resy_bot.models import (
     ResyConfig,
     ReservationRequest,
     ReservationRetriesConfig,

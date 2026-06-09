@@ -2,9 +2,9 @@ from datetime import datetime
 from requests import Session, HTTPError
 from typing import Dict, List
 
-from resy_bot.constants import RESY_BASE_URL, ResyEndpoints
-from resy_bot.logging import logging
-from resy_bot.models import (
+from backend.resy_bot.constants import RESY_BASE_URL, ResyEndpoints
+from backend.resy_bot.logging_config import logging
+from backend.resy_bot.models import (
     ResyConfig,
     AuthRequestBody,
     AuthResponseBody,

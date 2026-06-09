@@ -1,16 +1,16 @@
 import argparse
 import json
-from resy_bot.logging import logging
+from backend.resy_bot.logging_config import logging
 
-from resy_bot.models import ResyConfig, TimedReservationRequest
-from resy_bot.manager import ResyManager
+from backend.resy_bot.models import ResyConfig, TimedReservationRequest
+from backend.resy_bot.manager import ResyManager
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
 
 
-def wait_for_drop_time(resy_config_path: str, reservation_config_path: str) -> str:
-    logger.info("waiting for drop time!")
+def check_slots(resy_config_path: str, reservation_config_path: str) -> str:
+    logger.info("Checking slots")
 
     with open(resy_config_path, "r") as f:
         config_data = json.load(f)
@@ -23,7 +23,12 @@ def wait_for_drop_time(resy_config_path: str, reservation_config_path: str) -> s
 
     timed_request = TimedReservationRequest(**reservation_data)
 
-    return manager.make_reservation_at_opening_time(timed_request)
+    slots = manager.checkSlots(timed_request.reservation_request)
+    for slot in slots:
+        print(f"Slot time: {slot.date.start}, type: {slot.config.type}")
+    if not slots:
+        print("No slots today")
+    
 
 
 if __name__ == "__main__":
@@ -37,4 +42,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    wait_for_drop_time(args.resy_config_path, args.reservation_config_path)
+    check_slots(args.resy_config_path, args.reservation_config_path)

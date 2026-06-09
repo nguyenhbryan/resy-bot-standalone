@@ -3,8 +3,8 @@ from requests import HTTPError
 from unittest.mock import MagicMock
 from requests import Session
 
-from resy_bot.api_access import build_session, ResyApiAccess
-from tests.factories import (
+from backend.resy_bot.api_access import build_session, ResyApiAccess
+from backend.tests.factories import (
     ResyConfigFactory,
     AuthRequestBodyFactory,
     AuthResponseBodyFactory,

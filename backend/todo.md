@@ -21,3 +21,9 @@ The API should have some parameters.
 4. Drop time (HH, MM)
 
 Resy API config. It can default to mine, but also give users an option to specify their own.
+
+Phase 1: FastAPI endpoint calls your reserve() function directly
+Phase 2: Add job_id + status endpoint
+Phase 3: Add database
+Phase 4: Add Redis/Celery worker
+Phase 5: Add auth and encrypted saved tokens

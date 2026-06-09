@@ -1,5 +1,5 @@
 from datetime import date
-from resy_bot.models import (
+from backend.resy_bot.models import (
     ReservationRequest,
     AuthRequestBody,
     FindRequestBody,

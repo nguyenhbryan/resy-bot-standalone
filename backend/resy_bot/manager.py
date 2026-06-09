@@ -1,24 +1,25 @@
 from datetime import datetime, timedelta
+from typing import List
 
-from resy_bot.logging import logging
-from resy_bot.errors import NoSlotsError, ExhaustedRetriesError
-from resy_bot.constants import (
+from backend.resy_bot.logging_config import logging
+from backend.resy_bot.errors import NoSlotsError, ExhaustedRetriesError
+from backend.resy_bot.constants import (
     N_RETRIES,
     SECONDS_TO_WAIT_BETWEEN_RETRIES,
 )
-from resy_bot.models import (
+from backend.resy_bot.models import (
     ResyConfig,
     ReservationRequest,
     TimedReservationRequest,
     ReservationRetriesConfig,
 )
-from resy_bot.model_builders import (
+from backend.resy_bot.model_builders import (
     build_find_request_body,
     build_get_slot_details_body,
     build_book_request_body,
 )
-from resy_bot.api_access import ResyApiAccess
-from resy_bot.selectors import AbstractSelector, SimpleSelector
+from backend.resy_bot.api_access import ResyApiAccess, Slot
+from backend.resy_bot.selectors import AbstractSelector, SimpleSelector
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
@@ -54,6 +55,12 @@ class ResyManager:
         :return:
         """
         pass
+
+    def checkSlots(self, reservation_request: ReservationRequest) -> List[Slot]:
+        body = build_find_request_body(reservation_request)
+        slots = self.api_access.find_booking_slots(body)
+        return slots;
+
 
     def make_reservation(self, reservation_request: ReservationRequest) -> str:
         body = build_find_request_body(reservation_request)

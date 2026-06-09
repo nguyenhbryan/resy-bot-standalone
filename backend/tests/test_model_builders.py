@@ -1,16 +1,16 @@
 from datetime import date
 
-from tests.factories import (
+from backend.tests.factories import (
     ReservationRequestFactory,
     SlotFactory,
     ResyConfigFactory,
     DetailsResponseBodyFactory,
 )
-from resy_bot.models import (
+from backend.resy_bot.models import (
     FindRequestBody,
     DetailsRequestBody,
 )
-from resy_bot.model_builders import (
+from backend.resy_bot.model_builders import (
     build_find_request_body,
     build_get_slot_details_body,
     build_auth_request_body,
