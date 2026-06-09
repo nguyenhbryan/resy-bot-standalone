@@ -1,8 +1,8 @@
 import time
 
-from backend.resy_bot.logging_config import logging
-from backend.resy_bot.manager import ResyManager
-from backend.resy_bot.models import (
+from resy_bot.logging_config import logging
+from resy_bot.manager import ResyManager
+from resy_bot.models import (
     BookingMethod,
     ReservationRequest,
     ResyConfig,

@@ -2,18 +2,18 @@ from datetime import datetime, timedelta
 import pytest
 from unittest.mock import MagicMock, patch
 
-from backend.resy_bot.errors import NoSlotsError, ExhaustedRetriesError
-from backend.resy_bot.api_access import ResyApiAccess
-from backend.resy_bot.models import (
+from resy_bot.errors import NoSlotsError, ExhaustedRetriesError
+from resy_bot.api_access import ResyApiAccess
+from resy_bot.models import (
     FindRequestBody,
     DetailsRequestBody,
     BookRequestBody,
     PaymentMethod,
     ReservationRetriesConfig,
 )
-from backend.resy_bot.manager import ResyManager
+from resy_bot.manager import ResyManager
 
-from backend.tests.factories import (
+from tests.factories import (
     ResyConfigFactory,
     SlotFactory,
     ReservationRequestFactory,

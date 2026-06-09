@@ -1,10 +1,10 @@
 import argparse
 import json
-from backend.resy_bot.logging_config import logging
+from resy_bot.logging_config import logging
 
-from backend.resy_bot.models import ResyConfig, TimedReservationRequest
-from backend.resy_bot.manager import ResyManager
-import backend.app.services.reservation_service as reservation_service
+from resy_bot.models import ResyConfig, TimedReservationRequest
+from resy_bot.manager import ResyManager
+import app.services.reservation_service as reservation_service
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")

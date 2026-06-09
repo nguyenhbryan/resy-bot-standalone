@@ -2,8 +2,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-import backend.app.services.reservation_service as reservation_service
-from backend.resy_bot.models import ResyConfig, TimedReservationRequest
+import app.services.reservation_service as reservation_service
+from resy_bot.models import ResyConfig, TimedReservationRequest
 
 
 app = FastAPI(title="Resy Bot")

@@ -1,25 +1,25 @@
 from datetime import datetime, timedelta
 from typing import List
 
-from backend.resy_bot.logging_config import logging
-from backend.resy_bot.errors import NoSlotsError, ExhaustedRetriesError
-from backend.resy_bot.constants import (
+from resy_bot.logging_config import logging
+from resy_bot.errors import NoSlotsError, ExhaustedRetriesError
+from resy_bot.constants import (
     N_RETRIES,
     SECONDS_TO_WAIT_BETWEEN_RETRIES,
 )
-from backend.resy_bot.models import (
+from resy_bot.models import (
     ResyConfig,
     ReservationRequest,
     TimedReservationRequest,
     ReservationRetriesConfig,
 )
-from backend.resy_bot.model_builders import (
+from resy_bot.model_builders import (
     build_find_request_body,
     build_get_slot_details_body,
     build_book_request_body,
 )
-from backend.resy_bot.api_access import ResyApiAccess, Slot
-from backend.resy_bot.selectors import AbstractSelector, SimpleSelector
+from resy_bot.api_access import ResyApiAccess, Slot
+from resy_bot.selectors import AbstractSelector, SimpleSelector
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")

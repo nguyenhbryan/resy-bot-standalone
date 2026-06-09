@@ -2,10 +2,10 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from backend.resy_bot.errors import NoSlotsError
-from backend.resy_bot.selectors import SimpleSelector
+from resy_bot.errors import NoSlotsError
+from resy_bot.selectors import SimpleSelector
 
-from backend.tests.factories import ReservationRequestFactory, SlotFactory
+from tests.factories import ReservationRequestFactory, SlotFactory
 
 
 def test_simple_selector_select_exact_match():
