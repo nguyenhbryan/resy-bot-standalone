@@ -9,7 +9,9 @@ from resy_bot.manager import ResyManager
 from resy_bot.models import (
     BookingMethod,
     ReservationRequest,
+    ResolvedVenue,
     ResyConfig,
+    Slot,
     TimedReservationRequest,
 )
 
@@ -46,6 +48,14 @@ def check_slots(reservation_request: dict) -> list:
     request = ReservationRequest(**reservation_request)
 
     return manager.checkSlots(request)
+
+
+def check_slots_with_venue(reservation_request: dict) -> tuple[list[Slot], ResolvedVenue | None]:
+    config = load_resy_config()
+    manager = ResyManager.build(config)
+    request = ReservationRequest(**reservation_request)
+
+    return manager.check_slots_with_venue(request)
 
 
 def reserve(

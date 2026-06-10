@@ -69,8 +69,8 @@ class TimedReservationRequestFactory(factory.Factory):
         model = TimedReservationRequest
 
     reservation_request = factory.SubFactory(ReservationRequestFactory)
-    expected_drop_hour = factory.LazyFunction(lambda: randint(1, 24))
-    expected_drop_minute = factory.LazyFunction(lambda: randint(0, 60))
+    expected_drop_hour = factory.LazyFunction(lambda: randint(0, 23))
+    expected_drop_minute = factory.LazyFunction(lambda: randint(0, 59))
 
 
 class SlotConfigFactory(factory.Factory):

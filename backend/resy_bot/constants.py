@@ -8,6 +8,8 @@ SECONDS_TO_WAIT_BETWEEN_RETRIES = 0.05
 
 class ResyEndpoints(Enum):
     FIND = "/4/find"
+    VENUE_CONFIG = "/2/config"
+    VENUE_SEARCH = "/3/venuesearch/search"
     DETAILS = "/3/details"
     BOOK = "/3/book"
     PASSWORD_AUTH = "/3/auth/password"

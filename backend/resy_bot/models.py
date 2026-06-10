@@ -20,7 +20,9 @@ class ResyConfig(BaseModel):
 
 
 class ReservationRequest(BaseModel):
-    venue_id: str
+    venue_id: Optional[str] = None
+    venue_name: Optional[str] = None
+    venue_location: Optional[str] = None
     party_size: int
     ideal_hour: int
     ideal_minute: int
@@ -32,7 +34,7 @@ class ReservationRequest(BaseModel):
     method: BookingMethod
 
     @model_validator(mode="before")
-    def validate_target_date(cls, values: Dict) -> Dict:
+    def validate_request(cls, values: Dict) -> Dict:
         # Coerce common date string formats to `date`
         ideal = values.get("ideal_date")
         if isinstance(ideal, str):
@@ -49,9 +51,32 @@ class ReservationRequest(BaseModel):
         if has_date and has_waiting_pd:
             raise ValueError("Must only provide one of ideal_date or days_in_advance")
         elif has_date or has_waiting_pd:
-            return values
+            pass
+        else:
+            raise ValueError("Must provide ideal_date or days_in_advance")
 
-        raise ValueError("Must provide ideal_date or days_in_advance")
+        venue_id = values.get("venue_id")
+        venue_name = values.get("venue_name")
+
+        if isinstance(venue_id, str):
+            venue_id = venue_id.strip()
+            values["venue_id"] = venue_id or None
+
+        if isinstance(venue_name, str):
+            venue_name = venue_name.strip()
+            values["venue_name"] = venue_name or None
+
+        if not values.get("venue_id") and not values.get("venue_name"):
+            raise ValueError("Must provide venue_id or venue_name")
+
+        return values
+
+    @property
+    def resolved_venue_id(self) -> str:
+        if not self.venue_id:
+            raise ValueError("Venue name has not been resolved to a venue_id")
+
+        return self.venue_id
 
     @property
     def target_date(self) -> date:
@@ -73,6 +98,13 @@ class TimedReservationRequest(BaseModel):
     reservation_request: ReservationRequest
     expected_drop_hour: int
     expected_drop_minute: int
+
+
+class ResolvedVenue(BaseModel):
+    venue_id: str
+    name: str
+    locality: Optional[str] = None
+    region: Optional[str] = None
 
 
 class AuthRequestBody(BaseModel):

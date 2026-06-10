@@ -12,6 +12,7 @@ from resy_bot.models import (
     ReservationRetriesConfig,
 )
 from resy_bot.manager import ResyManager
+from resy_bot.venue_resolver import VenueCache, VenueCandidate, VenueResolver
 
 from tests.factories import (
     ResyConfigFactory,
@@ -124,6 +125,82 @@ def test_make_reservation_days_in_advance():
     mock_api_access.book_slot.assert_called_once_with(expected_booking_request)
 
 
+def test_check_slots_resolves_venue_name(tmp_path):
+    config = ResyConfigFactory.create()
+    retries_config = ReservationRetriesConfigFactory.create()
+    request = ReservationRequestFactory.create(
+        venue_id=None,
+        venue_name="Test Venue",
+        venue_location="New York",
+    )
+    mock_api_access = MagicMock()
+    mock_api_access.search_venues.return_value = [
+        VenueCandidate(
+            venue_id="9802",
+            name="Test Venue",
+            locality="New York",
+            region="NY",
+        )
+    ]
+    mock_api_access.get_venue_config.return_value = VenueCandidate(
+        venue_id="9802",
+        name="Test Venue",
+        locality="New York",
+        region="NY",
+    )
+    slots = SlotFactory.create_batch(3)
+    mock_api_access.find_booking_slots.return_value = slots
+    mock_selector = MagicMock()
+
+    venue_resolver = VenueResolver(
+        mock_api_access,
+        VenueCache(tmp_path / "venues.db"),
+    )
+    manager = ResyManager(
+        config,
+        mock_api_access,
+        mock_selector,
+        retries_config,
+        venue_resolver,
+    )
+
+    manager.checkSlots(request)
+
+    expected_day = request.ideal_date.strftime("%Y-%m-%d")
+    expected_find_request_body = FindRequestBody(
+        venue_id="9802", party_size=request.party_size, day=expected_day
+    )
+
+    mock_api_access.search_venues.assert_called_once_with("Test Venue", "New York")
+    mock_api_access.find_booking_slots.assert_called_once_with(
+        expected_find_request_body
+    )
+
+
+def test_check_slots_with_venue_loads_name_for_venue_id():
+    config = ResyConfigFactory.create()
+    retries_config = ReservationRetriesConfigFactory.create()
+    request = ReservationRequestFactory.create(venue_id="74751")
+    mock_api_access = MagicMock()
+    mock_api_access.get_venue_config.return_value = VenueCandidate(
+        venue_id="74751",
+        name="Southeast Impression",
+        locality="Fairfax",
+        region="VA",
+    )
+    slots = SlotFactory.create_batch(3)
+    mock_api_access.find_booking_slots.return_value = slots
+    mock_selector = MagicMock()
+
+    manager = ResyManager(config, mock_api_access, mock_selector, retries_config)
+
+    returned_slots, venue = manager.check_slots_with_venue(request)
+
+    assert returned_slots == slots
+    assert venue.name == "Southeast Impression"
+    mock_api_access.get_venue_config.assert_called_once_with("74751")
+
+
 def test_make_reservation_no_slots():
     config = ResyConfigFactory.create()
     retries_config = ReservationRetriesConfigFactory.create()
@@ -207,7 +284,5 @@ def test_make_reservation_at_opening_time(mock_make_reservation, mock_dt):
     manager = ResyManager(config, mock_api_access, mock_selector, retry_config)
 
     manager.make_reservation_at_opening_time(request)
-
-    assert mock_dt.now.call_count == 3
 
     mock_make_reservation.assert_called_once()

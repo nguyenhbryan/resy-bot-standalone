@@ -17,6 +17,18 @@ type ApiSlot = {
   };
 };
 
+type ApiVenue = {
+  venue_id: string;
+  name: string;
+  locality?: string | null;
+  region?: string | null;
+};
+
+type SlotCheckResult = {
+  venue?: ApiVenue | null;
+  slots: ApiSlot[];
+};
+
 type JobStatus =
   | "pending"
   | "running"
@@ -68,7 +80,9 @@ function buildReservationRequest(formData: FormData) {
   }
 
   return {
-    venue_id: getText(formData, "venue_id"),
+    venue_id: getText(formData, "venue_id") || null,
+    venue_name: getText(formData, "venue_name") || null,
+    venue_location: getText(formData, "venue_location") || null,
     party_size: getNumber(formData, "party_size"),
     ideal_hour: getNumber(formData, "ideal_hour"),
     ideal_minute: getNumber(formData, "ideal_minute"),
@@ -85,15 +99,23 @@ function encodeState(value: unknown) {
   return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
 }
 
-function decodeSlots(value?: string | string[]) {
+function decodeSlotResult(value?: string | string[]): SlotCheckResult {
   if (!value || Array.isArray(value)) {
-    return [];
+    return { venue: null, slots: [] };
   }
 
   try {
-    return JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as ApiSlot[];
+    const decoded = JSON.parse(
+      Buffer.from(value, "base64url").toString("utf8")
+    ) as ApiSlot[] | SlotCheckResult;
+
+    if (Array.isArray(decoded)) {
+      return { venue: null, slots: decoded };
+    }
+
+    return { venue: decoded.venue ?? null, slots: decoded.slots ?? [] };
   } catch {
-    return [];
+    return { venue: null, slots: [] };
   }
 }
 
@@ -148,12 +170,12 @@ async function checkSlots(formData: FormData) {
 
   try {
     const body = buildReservationRequest(formData);
-    const response = await apiRequest<{ slots: ApiSlot[] }>("/slots", {
+    const response = await apiRequest<SlotCheckResult>("/slots", {
       method: "POST",
       body: JSON.stringify(body),
     });
 
-    nextPath = `/ssr?slots=${encodeState(response.slots)}`;
+    nextPath = `/ssr?slots=${encodeState(response)}`;
   } catch (error) {
     nextPath = `/ssr?error=${encodeURIComponent((error as Error).message)}`;
   }
@@ -261,7 +283,8 @@ export default async function SsrPage({
   }
 
   const params = await searchParams;
-  const slots = decodeSlots(params?.slots);
+  const slotResult = decodeSlotResult(params?.slots);
+  const slots = slotResult.slots;
   const [selectedJob, jobs] = await Promise.all([getJob(params?.job), getJobs()]);
   const health = await getHealth();
   const error = typeof params?.error === "string" ? params.error : null;
@@ -298,8 +321,16 @@ export default async function SsrPage({
             <fieldset disabled={apiOffline} className="space-y-5 disabled:cursor-not-allowed">
               <div className="grid gap-4 sm:grid-cols-2">
               <label className="space-y-2 text-sm font-medium">
+                Venue Name
+                <input name="venue_name" placeholder="Carbone" className="h-10 w-full rounded-md border border-neutral-300 px-3" />
+              </label>
+              <label className="space-y-2 text-sm font-medium">
+                City or Region
+                <input name="venue_location" placeholder="New York" className="h-10 w-full rounded-md border border-neutral-300 px-3" />
+              </label>
+              <label className="space-y-2 text-sm font-medium">
                 Venue ID
-                <input name="venue_id" required className="h-10 w-full rounded-md border border-neutral-300 px-3" />
+                <input name="venue_id" placeholder="Optional" className="h-10 w-full rounded-md border border-neutral-300 px-3" />
               </label>
               <label className="space-y-2 text-sm font-medium">
                 Party Size
@@ -418,6 +449,16 @@ export default async function SsrPage({
 
           <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-semibold">Available Slots</h2>
+            {slotResult.venue ? (
+              <p className="mt-1 text-sm font-medium text-neutral-700">
+                {slotResult.venue.name}
+                {[slotResult.venue.locality, slotResult.venue.region].filter(Boolean).length
+                  ? `, ${[slotResult.venue.locality, slotResult.venue.region]
+                      .filter(Boolean)
+                      .join(", ")}`
+                  : ""}
+              </p>
+            ) : null}
             <div className="mt-3 space-y-3">
               {slots.length ? (
                 slots.map((slot) => (
