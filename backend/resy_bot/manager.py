@@ -16,6 +16,7 @@ from resy_bot.constants import (
 from resy_bot.models import (
     ResyConfig,
     ReservationRequest,
+    ResolvedVenue,
     TimedReservationRequest,
     ReservationRetriesConfig,
 )
@@ -26,6 +27,7 @@ from resy_bot.model_builders import (
 )
 from resy_bot.api_access import ResyApiAccess, Slot
 from resy_bot.selectors import AbstractSelector, SimpleSelector
+from resy_bot.venue_resolver import VenueCandidate, VenueResolver
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
@@ -53,27 +55,93 @@ class ResyManager:
         api_access: ResyApiAccess,
         slot_selector: AbstractSelector,
         retry_config: ReservationRetriesConfig,
+        venue_resolver: VenueResolver | None = None,
     ):
         self.config = config
         self.api_access = api_access
         self.selector = slot_selector
         self.retry_config = retry_config
+        self.venue_resolver = venue_resolver or VenueResolver(api_access)
 
-    def get_venue_id(self, address: str):
-        """
-        TODO: get venue id from string address
-            will use geolocator to get lat/long
-        :return:
-        """
-        pass
+    def get_venue_id(self, name: str, location: str | None = None) -> str:
+        return self.venue_resolver.resolve(name, location)
+
+    def get_venue(self, name: str, location: str | None = None) -> ResolvedVenue:
+        return self._to_resolved_venue(
+            self.venue_resolver.resolve_candidate(name, location)
+        )
+
+    def _resolve_request_venue(
+        self,
+        reservation_request: ReservationRequest,
+        include_venue_info: bool = False,
+    ) -> tuple[ReservationRequest, ResolvedVenue | None]:
+        if reservation_request.venue_id:
+            venue = (
+                self._get_venue_config(reservation_request.venue_id)
+                if include_venue_info
+                else None
+            )
+            if not venue and reservation_request.venue_name:
+                venue = ResolvedVenue(
+                    venue_id=reservation_request.venue_id,
+                    name=reservation_request.venue_name,
+                    locality=reservation_request.venue_location,
+                )
+            return reservation_request, venue
+
+        if not reservation_request.venue_name:
+            raise ValueError("Must provide venue_id or venue_name")
+
+        candidate = self.venue_resolver.resolve_candidate(
+            reservation_request.venue_name,
+            reservation_request.venue_location,
+        )
+        venue = self._to_resolved_venue(candidate)
+
+        return (
+            reservation_request.model_copy(
+                update={"venue_id": venue.venue_id, "venue_name": venue.name}
+            ),
+            venue,
+        )
+
+    def _to_resolved_venue(self, candidate: VenueCandidate) -> ResolvedVenue:
+        return ResolvedVenue(
+            venue_id=candidate.venue_id,
+            name=candidate.name,
+            locality=candidate.locality,
+            region=candidate.region,
+        )
+
+    def _get_venue_config(self, venue_id: str) -> ResolvedVenue | None:
+        candidate = self.api_access.get_venue_config(venue_id)
+
+        if not candidate:
+            return None
+
+        return self._to_resolved_venue(candidate)
 
     def checkSlots(self, reservation_request: ReservationRequest) -> List[Slot]:
+        reservation_request, _ = self._resolve_request_venue(reservation_request)
         body = build_find_request_body(reservation_request)
         slots = self.api_access.find_booking_slots(body)
         return slots;
 
+    def check_slots_with_venue(
+        self, reservation_request: ReservationRequest
+    ) -> tuple[List[Slot], ResolvedVenue | None]:
+        reservation_request, venue = self._resolve_request_venue(
+            reservation_request,
+            include_venue_info=True,
+        )
+        body = build_find_request_body(reservation_request)
+        slots = self.api_access.find_booking_slots(body)
+        return slots, venue
+
 
     def make_reservation(self, reservation_request: ReservationRequest) -> str:
+        reservation_request, _ = self._resolve_request_venue(reservation_request)
         body = build_find_request_body(reservation_request)
 
         slots = self.api_access.find_booking_slots(body)

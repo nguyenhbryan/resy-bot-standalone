@@ -15,7 +15,12 @@ from app.env import load_backend_env
 from app.job_store import JobStore, StoredJob
 import app.services.reservation_service as reservation_service
 from resy_bot.errors import ExhaustedRetriesError, NoSlotsError, ReservationCancelledError
-from resy_bot.models import ReservationRequest, Slot, TimedReservationRequest
+from resy_bot.models import (
+    ReservationRequest,
+    ResolvedVenue,
+    Slot,
+    TimedReservationRequest,
+)
 
 
 load_backend_env()
@@ -62,6 +67,7 @@ class ReservationJob(BaseModel):
 
 
 class SlotsResponse(BaseModel):
+    venue: ResolvedVenue | None = None
     slots: list[Slot] = Field(default_factory=list)
 
 
@@ -176,14 +182,14 @@ def health() -> dict[str, str]:
 @app.post("/slots", response_model=SlotsResponse)
 async def slots(request: ReservationRequest) -> SlotsResponse:
     try:
-        found_slots = await run_in_threadpool(
-            reservation_service.check_slots,
+        found_slots, venue = await run_in_threadpool(
+            reservation_service.check_slots_with_venue,
             request.model_dump(),
         )
     except Exception as exc:
         raise _map_exception(exc) from exc
 
-    return SlotsResponse(slots=found_slots)
+    return SlotsResponse(venue=venue, slots=found_slots)
 
 
 @app.post("/reserve", response_model=ReserveResponse, status_code=202)

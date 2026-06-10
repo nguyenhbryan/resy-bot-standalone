@@ -108,6 +108,58 @@ def test_find_booking_slots_bad_resp():
         api_access.find_booking_slots(body)
 
 
+def test_search_venues():
+    session = MagicMock()
+    resp_mock = MagicMock()
+    resp_mock.json.return_value = {
+        "results": {
+            "venues": [
+                {
+                    "id": {"resy": 9802},
+                    "name": "Test Venue",
+                    "locality": "New York",
+                    "region": "NY",
+                    "url_slug": "test-venue",
+                }
+            ]
+        }
+    }
+    session.post.return_value = resp_mock
+    api_access = ResyApiAccess(session)
+
+    candidates = api_access.search_venues("Test Venue", "New York")
+
+    session.post.assert_called_once_with(
+        "https://api.resy.com/3/venuesearch/search",
+        json={"query": "Test Venue New York", "per_page": 10},
+    )
+    assert candidates[0].venue_id == "9802"
+    assert candidates[0].name == "Test Venue"
+
+
+def test_get_venue_config():
+    session = MagicMock()
+    resp_mock = MagicMock()
+    resp_mock.json.return_value = {
+        "venue": {
+            "id": 9802,
+            "name": "Configured Venue",
+            "locality": "New York",
+            "region": "NY",
+        }
+    }
+    session.get.return_value = resp_mock
+    api_access = ResyApiAccess(session)
+
+    candidate = api_access.get_venue_config("9802")
+
+    session.get.assert_called_once_with(
+        "https://api.resy.com/2/config", params={"venue_id": "9802"}
+    )
+    assert candidate.venue_id == "9802"
+    assert candidate.name == "Configured Venue"
+
+
 def test_get_booking_token():
     expected_resp = DetailsResponseBodyFactory.create()
 

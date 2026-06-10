@@ -3,7 +3,12 @@ from fastapi.testclient import TestClient
 import app.main as main_module
 from app.main import app
 from resy_bot.errors import NoSlotsError
-from tests.factories import ReservationRequestFactory, SlotFactory, TimedReservationRequestFactory
+from resy_bot.models import ResolvedVenue
+from tests.factories import (
+    ReservationRequestFactory,
+    SlotFactory,
+    TimedReservationRequestFactory,
+)
 
 
 client = TestClient(app)
@@ -27,13 +32,14 @@ def test_slots(monkeypatch):
 
     monkeypatch.setattr(
         main_module.reservation_service,
-        "check_slots",
-        lambda _: [slot],
+        "check_slots_with_venue",
+        lambda _: ([slot], ResolvedVenue(venue_id="9802", name="Test Venue")),
     )
 
     response = client.post("/slots", json=request.model_dump(mode="json"))
 
     assert response.status_code == 200
+    assert response.json()["venue"]["name"] == "Test Venue"
     assert response.json()["slots"][0]["config"]["token"] == slot.config.token
 
 
@@ -43,7 +49,11 @@ def test_slots_maps_no_slots(monkeypatch):
     def raise_no_slots(_):
         raise NoSlotsError("No slots found")
 
-    monkeypatch.setattr(main_module.reservation_service, "check_slots", raise_no_slots)
+    monkeypatch.setattr(
+        main_module.reservation_service,
+        "check_slots_with_venue",
+        raise_no_slots,
+    )
 
     response = client.post("/slots", json=request.model_dump(mode="json"))
 
