@@ -1,3 +1,4 @@
+import json
 from enum import Enum
 from os import environ
 from threading import Event, Lock
@@ -57,11 +58,27 @@ class ReserveResponse(BaseModel):
     status: JobStatus
 
 
+class ReservationDetails(BaseModel):
+    restaurant_name: str | None = None
+    venue_id: str | None = None
+    venue_location: str | None = None
+    party_size: int | None = None
+    ideal_date: str | None = None
+    days_in_advance: int | None = None
+    ideal_time: str | None = None
+    window_hours: int | None = None
+    prefer_early: bool | None = None
+    preferred_type: str | None = None
+    method: str | None = None
+    expected_drop_time: str | None = None
+
+
 class ReservationJob(BaseModel):
     id: str
     status: JobStatus
     created_at: str
     updated_at: str
+    reservation: ReservationDetails | None = None
     reservation_token: str | None = None
     error: str | None = None
 
@@ -86,8 +103,53 @@ def _to_response_job(job: StoredJob) -> ReservationJob:
         status=JobStatus(job.status),
         created_at=job.created_at,
         updated_at=job.updated_at,
+        reservation=_job_reservation_details(job),
         reservation_token=job.reservation_token,
         error=job.error,
+    )
+
+
+def _format_time(hour: object, minute: object) -> str | None:
+    if not isinstance(hour, int) or not isinstance(minute, int):
+        return None
+
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        return None
+
+    period = "AM" if hour < 12 else "PM"
+    hour_12 = hour % 12 or 12
+    return f"{hour_12}:{minute:02d} {period}"
+
+
+def _job_reservation_details(job: StoredJob) -> ReservationDetails | None:
+    try:
+        request = json.loads(job.request_json)
+    except json.JSONDecodeError:
+        return None
+
+    reservation_request = request.get("reservation_request")
+    if not isinstance(reservation_request, dict):
+        return None
+
+    return ReservationDetails(
+        restaurant_name=reservation_request.get("venue_name"),
+        venue_id=reservation_request.get("venue_id"),
+        venue_location=reservation_request.get("venue_location"),
+        party_size=reservation_request.get("party_size"),
+        ideal_date=reservation_request.get("ideal_date"),
+        days_in_advance=reservation_request.get("days_in_advance"),
+        ideal_time=_format_time(
+            reservation_request.get("ideal_hour"),
+            reservation_request.get("ideal_minute"),
+        ),
+        window_hours=reservation_request.get("window_hours"),
+        prefer_early=reservation_request.get("prefer_early"),
+        preferred_type=reservation_request.get("preferred_type"),
+        method=reservation_request.get("method"),
+        expected_drop_time=_format_time(
+            request.get("expected_drop_hour"),
+            request.get("expected_drop_minute"),
+        ),
     )
 
 

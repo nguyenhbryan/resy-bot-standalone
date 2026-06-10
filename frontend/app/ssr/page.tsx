@@ -37,11 +37,27 @@ type JobStatus =
   | "succeeded"
   | "failed";
 
+type ReservationDetails = {
+  restaurant_name?: string | null;
+  venue_id?: string | null;
+  venue_location?: string | null;
+  party_size?: number | null;
+  ideal_date?: string | null;
+  days_in_advance?: number | null;
+  ideal_time?: string | null;
+  window_hours?: number | null;
+  prefer_early?: boolean | null;
+  preferred_type?: string | null;
+  method?: string | null;
+  expected_drop_time?: string | null;
+};
+
 type ReservationJob = {
   id: string;
   status: JobStatus;
   created_at?: string;
   updated_at?: string;
+  reservation?: ReservationDetails | null;
   reservation_token?: string | null;
   error?: string | null;
 };
@@ -293,6 +309,47 @@ function formatDateTime(value?: string) {
   return new Date(value).toLocaleString();
 }
 
+function formatDate(value?: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const parts = value.split("-").map(Number);
+
+  if (parts.length !== 3 || parts.some(Number.isNaN)) {
+    return value;
+  }
+
+  return new Date(parts[0], parts[1] - 1, parts[2]).toLocaleDateString();
+}
+
+function reservationTitle(reservation?: ReservationDetails | null) {
+  if (!reservation) {
+    return "Reservation";
+  }
+
+  return (
+    reservation.restaurant_name ||
+    (reservation.venue_id ? `Venue ${reservation.venue_id}` : "Reservation")
+  );
+}
+
+function reservationDate(reservation?: ReservationDetails | null) {
+  if (!reservation) {
+    return null;
+  }
+
+  if (reservation.ideal_date) {
+    return formatDate(reservation.ideal_date);
+  }
+
+  if (reservation.days_in_advance) {
+    return `${reservation.days_in_advance} days out`;
+  }
+
+  return null;
+}
+
 export default async function SsrPage({
   searchParams,
 }: {
@@ -455,6 +512,64 @@ export default async function SsrPage({
                     <p className="mt-2 break-all text-xs text-neutral-600">
                       {job.id}
                     </p>
+                    {job.reservation ? (
+                      <div className="mt-3 space-y-2 rounded-md bg-neutral-50 p-3">
+                        <div>
+                          <p className="font-medium">{reservationTitle(job.reservation)}</p>
+                          {job.reservation.venue_location ? (
+                            <p className="text-xs text-neutral-500">
+                              {job.reservation.venue_location}
+                            </p>
+                          ) : null}
+                        </div>
+                        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                          {job.reservation.party_size ? (
+                            <>
+                              <dt className="text-neutral-500">Party</dt>
+                              <dd className="font-medium">{job.reservation.party_size}</dd>
+                            </>
+                          ) : null}
+                          {reservationDate(job.reservation) ? (
+                            <>
+                              <dt className="text-neutral-500">Date</dt>
+                              <dd className="font-medium">
+                                {reservationDate(job.reservation)}
+                              </dd>
+                            </>
+                          ) : null}
+                          {job.reservation.ideal_time ? (
+                            <>
+                              <dt className="text-neutral-500">Time</dt>
+                              <dd className="font-medium">{job.reservation.ideal_time}</dd>
+                            </>
+                          ) : null}
+                          {job.reservation.expected_drop_time ? (
+                            <>
+                              <dt className="text-neutral-500">Drop</dt>
+                              <dd className="font-medium">
+                                {job.reservation.expected_drop_time}
+                              </dd>
+                            </>
+                          ) : null}
+                          {job.reservation.preferred_type ? (
+                            <>
+                              <dt className="text-neutral-500">Seating</dt>
+                              <dd className="font-medium">
+                                {job.reservation.preferred_type}
+                              </dd>
+                            </>
+                          ) : null}
+                          {job.reservation.method ? (
+                            <>
+                              <dt className="text-neutral-500">Method</dt>
+                              <dd className="font-medium capitalize">
+                                {job.reservation.method}
+                              </dd>
+                            </>
+                          ) : null}
+                        </dl>
+                      </div>
+                    ) : null}
                     {job.reservation_token ? (
                       <p className="mt-2 break-all">
                         <span className="font-medium">Token:</span> {job.reservation_token}

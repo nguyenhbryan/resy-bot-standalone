@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi.testclient import TestClient
 
 import app.main as main_module
@@ -62,7 +64,20 @@ def test_slots_maps_no_slots(monkeypatch):
 
 
 def test_reserve_creates_job(monkeypatch):
-    request = TimedReservationRequestFactory.create()
+    request = TimedReservationRequestFactory.create(
+        expected_drop_hour=10,
+        expected_drop_minute=0,
+        reservation_request=ReservationRequestFactory.create(
+            venue_name="Carbone",
+            venue_location="New York",
+            party_size=4,
+            ideal_date=date(2026, 7, 15),
+            ideal_hour=19,
+            ideal_minute=30,
+            window_hours=1,
+            preferred_type="Dining Room",
+        ),
+    )
 
     monkeypatch.setattr(
         main_module.reservation_service,
@@ -79,8 +94,23 @@ def test_reserve_creates_job(monkeypatch):
     job_response = client.get(f"/jobs/{body['job_id']}")
 
     assert job_response.status_code == 200
-    assert job_response.json()["status"] == "succeeded"
-    assert job_response.json()["reservation_token"] == "reservation-token"
+    job = job_response.json()
+    assert job["status"] == "succeeded"
+    assert job["reservation_token"] == "reservation-token"
+    assert job["reservation"] == {
+        "restaurant_name": "Carbone",
+        "venue_id": request.reservation_request.venue_id,
+        "venue_location": "New York",
+        "party_size": 4,
+        "ideal_date": "2026-07-15",
+        "days_in_advance": None,
+        "ideal_time": "7:30 PM",
+        "window_hours": 1,
+        "prefer_early": request.reservation_request.prefer_early,
+        "preferred_type": "Dining Room",
+        "method": "scheduled",
+        "expected_drop_time": "10:00 AM",
+    }
 
 
 def test_reserve_persists_job(monkeypatch):
@@ -122,6 +152,7 @@ def test_list_jobs(monkeypatch):
     assert jobs[0]["id"] == response.json()["job_id"]
     assert jobs[0]["status"] == "succeeded"
     assert jobs[0]["reservation_token"] == "reservation-token"
+    assert jobs[0]["reservation"]["party_size"] == request.reservation_request.party_size
 
 
 def test_get_job_not_found():
