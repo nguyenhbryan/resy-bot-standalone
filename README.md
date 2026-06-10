@@ -16,12 +16,28 @@ Use it responsibly with your own Resy account credentials and payment method. Th
 
 ## Features
 
-- Check available Resy slots for a venue, date or days-in-advance window, party size, and seating type.
+- Check available Resy slots by venue ID or by venue name plus optional city/region.
+- Resolve and cache venue search results so users do not need to manually inspect Resy network traffic for every venue ID.
+- Check slots for a specific date or days-in-advance window, party size, ideal time, time window, and seating type.
 - Schedule reservation attempts around an expected drop time.
+- Enter user-facing times in 12-hour format, such as `7:30 PM` or `10 AM`; the frontend converts them for the backend.
 - Track reservation jobs with `pending`, `running`, `cancelling`, `cancelled`, `succeeded`, and `failed` statuses.
+- List recent reservation jobs with timestamps and errors.
 - Cancel active reservation jobs.
 - Persist backend job state in SQLite.
+- Gate the web console behind an `ACCESS_KEY` cookie.
 - Run locally with Docker Compose or run the backend and frontend separately.
+
+## Pull Request Highlights
+
+This update turns the app into a more complete reservation console instead of a thin form over the backend.
+
+- Lazy loading and dynamic server rendering: the protected Next.js console is rendered as a dynamic route and loads live backend data only after the access key has been accepted. API health, selected job state, and the job list are fetched on demand for each console view, while available slots are loaded only after the user submits `Check Slots`.
+- Venue search: reservation requests can now use `venue_name` and optional `venue_location`; the backend searches Resy, ranks matches, caches resolved venues in SQLite, and still supports direct `venue_id` entry.
+- Job management: reservation jobs are persisted with created/updated timestamps, exposed through a list endpoint, and shown in the frontend with status, errors, reservation tokens, and cancellation controls.
+- Time picker fix: the frontend accepts natural 12-hour times with AM/PM for both ideal reservation time and expected drop time, then converts those values to backend hour/minute fields.
+- Resilience and feedback: the console shows API health, disables reservation actions while FastAPI is offline, and surfaces backend validation or Resy errors in the UI.
+- Test coverage: backend tests cover venue search/resolution, API parsing, slot checks with venue metadata, job listing/persistence, and time-sensitive reservation behavior.
 
 ## Requirements
 
@@ -47,6 +63,8 @@ RESY_PAYMENT_METHOD_ID=123456
 RESY_EMAIL=you@example.com
 RESY_PASSWORD=your_resy_password
 CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+SQLITE_PATH=/tmp/resy-bot-jobs.db
+RESY_VENUE_CACHE_PATH=/tmp/resy-bot-venues.db
 ```
 
 Create `frontend/.env` with an access key for the web console:
@@ -105,8 +123,9 @@ Open http://localhost:3000 and enter the `ACCESS_KEY` from `frontend/.env`.
 The FastAPI app exposes:
 
 - `GET /health` - backend health check.
-- `POST /slots` - check availability for a reservation request.
+- `POST /slots` - check availability for a reservation request and return matching venue metadata when available.
 - `POST /reserve` - create a background reservation job.
+- `GET /jobs` - list reservation jobs, newest first.
 - `GET /jobs/{job_id}` - fetch reservation job status.
 - `POST /jobs/{job_id}/cancel` - request cancellation for an active job.
 
