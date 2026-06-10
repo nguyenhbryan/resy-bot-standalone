@@ -1,0 +1,79 @@
+name: Docker
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    name: Build and Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create CI env files
+        run: |
+          cat > backend/.env <<'EOF'
+          RESY_API_KEY=ci_resy_api_key
+          RESY_TOKEN=ci_resy_auth_token
+          RESY_PAYMENT_METHOD_ID=123456
+          RESY_EMAIL=ci@example.com
+          RESY_PASSWORD=ci_password
+          CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+          EOF
+
+          cat > frontend/.env <<'EOF'
+          ACCESS_KEY=ci_access_key
+          EOF
+
+      - name: Build images
+        run: docker compose build
+
+      - name: Start services
+        run: docker compose up -d
+
+      - name: Smoke test backend
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:8000/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker compose logs backend
+          exit 1
+
+      - name: Smoke test frontend
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:3000 > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker compose logs frontend
+          exit 1
+
+      - name: Show container logs
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop services
+        if: always()
+        run: docker compose down --volumes --remove-orphans
