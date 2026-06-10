@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from requests import HTTPError
 
 from app.env import load_backend_env
+from app.job_store import JobStore, StoredJob
 import app.services.reservation_service as reservation_service
 from resy_bot.errors import ExhaustedRetriesError, NoSlotsError, ReservationCancelledError
 from resy_bot.models import ReservationRequest, Slot, TimedReservationRequest
@@ -20,6 +21,7 @@ from resy_bot.models import ReservationRequest, Slot, TimedReservationRequest
 load_backend_env()
 
 app = FastAPI(title="Resy Bot")
+job_store = JobStore()
 
 
 def _cors_origins() -> list[str]:
@@ -61,14 +63,37 @@ class SlotsResponse(BaseModel):
     slots: list[Slot] = Field(default_factory=list)
 
 
-jobs: dict[str, ReservationJob] = {}
 cancellation_events: dict[str, Event] = {}
 jobs_lock = Lock()
 
 
-def _set_job(job: ReservationJob) -> None:
-    with jobs_lock:
-        jobs[job.id] = job
+@app.on_event("startup")
+def mark_interrupted_jobs() -> None:
+    job_store.mark_active_interrupted()
+
+
+def _to_response_job(job: StoredJob) -> ReservationJob:
+    return ReservationJob(
+        id=job.id,
+        status=JobStatus(job.status),
+        reservation_token=job.reservation_token,
+        error=job.error,
+    )
+
+
+def _set_job(
+    job_id: str,
+    status: JobStatus,
+    *,
+    reservation_token: str | None = None,
+    error: str | None = None,
+) -> None:
+    job_store.set_job(
+        job_id,
+        status.value,
+        reservation_token=reservation_token,
+        error=error,
+    )
 
 
 def _map_exception(exc: Exception) -> HTTPException:
@@ -112,15 +137,13 @@ def _run_reservation_job(job_id: str, request: TimedReservationRequest) -> None:
 
     if cancel_event.is_set():
         _set_job(
-            ReservationJob(
-                id=job_id,
-                status=JobStatus.CANCELLED,
-                error="Reservation job was cancelled",
-            )
+            job_id,
+            JobStatus.CANCELLED,
+            error="Reservation job was cancelled",
         )
         return
 
-    _set_job(ReservationJob(id=job_id, status=JobStatus.RUNNING))
+    _set_job(job_id, JobStatus.RUNNING)
 
     try:
         reservation_token = reservation_service.reserve(
@@ -128,30 +151,16 @@ def _run_reservation_job(job_id: str, request: TimedReservationRequest) -> None:
             cancel_event=cancel_event,
         )
     except ReservationCancelledError as exc:
-        _set_job(
-            ReservationJob(
-                id=job_id,
-                status=JobStatus.CANCELLED,
-                error=str(exc),
-            )
-        )
+        _set_job(job_id, JobStatus.CANCELLED, error=str(exc))
         return
     except Exception as exc:
-        _set_job(
-            ReservationJob(
-                id=job_id,
-                status=JobStatus.FAILED,
-                error=_map_exception(exc).detail,
-            )
-        )
+        _set_job(job_id, JobStatus.FAILED, error=_map_exception(exc).detail)
         return
 
     _set_job(
-        ReservationJob(
-            id=job_id,
-            status=JobStatus.SUCCEEDED,
-            reservation_token=reservation_token,
-        )
+        job_id,
+        JobStatus.SUCCEEDED,
+        reservation_token=reservation_token,
     )
 
 
@@ -178,8 +187,13 @@ async def reserve(
     request: TimedReservationRequest, background_tasks: BackgroundTasks
 ) -> ReserveResponse:
     job_id = str(uuid4())
+    job_store.create_job(
+        job_id,
+        JobStatus.PENDING.value,
+        request.model_dump(mode="json"),
+    )
+
     with jobs_lock:
-        jobs[job_id] = ReservationJob(id=job_id, status=JobStatus.PENDING)
         cancellation_events[job_id] = Event()
 
     background_tasks.add_task(_run_reservation_job, job_id, request)
@@ -189,38 +203,43 @@ async def reserve(
 
 @app.get("/jobs/{job_id}", response_model=ReservationJob)
 def get_job(job_id: str) -> ReservationJob:
-    with jobs_lock:
-        job = jobs.get(job_id)
+    job = job_store.get_job(job_id)
 
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    return job
+    return _to_response_job(job)
 
 
 @app.post("/jobs/{job_id}/cancel", response_model=ReservationJob)
 def cancel_job(job_id: str) -> ReservationJob:
+    job = job_store.get_job(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    response_job = _to_response_job(job)
+
+    if response_job.status in {
+        JobStatus.SUCCEEDED,
+        JobStatus.FAILED,
+        JobStatus.CANCELLED,
+    }:
+        return response_job
+
     with jobs_lock:
-        job = jobs.get(job_id)
         cancel_event = cancellation_events.get(job_id)
 
-        if not job or not cancel_event:
-            raise HTTPException(status_code=404, detail="Job not found")
+        if cancel_event:
+            cancel_event.set()
 
-        if job.status in {
-            JobStatus.SUCCEEDED,
-            JobStatus.FAILED,
-            JobStatus.CANCELLED,
-        }:
-            return job
+    cancelled_job = job_store.request_cancel(
+        job_id,
+        JobStatus.CANCELLING.value,
+        "Cancellation requested",
+    )
 
-        cancel_event.set()
-        job = ReservationJob(
-            id=job.id,
-            status=JobStatus.CANCELLING,
-            reservation_token=job.reservation_token,
-            error="Cancellation requested",
-        )
-        jobs[job_id] = job
+    if not cancelled_job:
+        raise HTTPException(status_code=404, detail="Job not found")
 
-    return job
+    return _to_response_job(cancelled_job)

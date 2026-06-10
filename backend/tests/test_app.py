@@ -10,7 +10,8 @@ client = TestClient(app)
 
 
 def setup_function():
-    main_module.jobs.clear()
+    main_module.job_store.clear()
+    main_module.cancellation_events.clear()
 
 
 def test_health():
@@ -56,7 +57,7 @@ def test_reserve_creates_job(monkeypatch):
     monkeypatch.setattr(
         main_module.reservation_service,
         "reserve",
-        lambda _: "reservation-token",
+        lambda *_, **__: "reservation-token",
     )
 
     response = client.post("/reserve", json=request.model_dump(mode="json"))
@@ -70,6 +71,24 @@ def test_reserve_creates_job(monkeypatch):
     assert job_response.status_code == 200
     assert job_response.json()["status"] == "succeeded"
     assert job_response.json()["reservation_token"] == "reservation-token"
+
+
+def test_reserve_persists_job(monkeypatch):
+    request = TimedReservationRequestFactory.create()
+
+    monkeypatch.setattr(
+        main_module.reservation_service,
+        "reserve",
+        lambda *_, **__: "reservation-token",
+    )
+
+    response = client.post("/reserve", json=request.model_dump(mode="json"))
+
+    assert response.status_code == 202
+    stored_job = main_module.job_store.get_job(response.json()["job_id"])
+    assert stored_job is not None
+    assert stored_job.status == "succeeded"
+    assert stored_job.reservation_token == "reservation-token"
 
 
 def test_get_job_not_found():

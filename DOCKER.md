@@ -16,6 +16,7 @@ Runtime secrets stay outside the images:
 - `frontend/.env` should provide `ACCESS_KEY`.
 
 Compose sets `FASTAPI_URL=http://backend:8000` for the frontend container so server actions call the backend over the Compose network.
+The backend stores reservation jobs in SQLite. Compose sets `DATABASE_URL=sqlite:////data/resy-bot.db` and mounts the `backend_data` volume at `/data` so job status survives container recreation.
 
 Useful commands:
 

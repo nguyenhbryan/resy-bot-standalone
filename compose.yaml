@@ -6,8 +6,11 @@ services:
       - ./backend/.env
     environment:
       CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      DATABASE_URL: sqlite:////data/resy-bot.db
     ports:
       - "8000:8000"
+    volumes:
+      - backend_data:/data
 
   frontend:
     build:
@@ -22,3 +25,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+volumes:
+  backend_data:
