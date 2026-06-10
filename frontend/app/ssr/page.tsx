@@ -66,10 +66,33 @@ function getNumber(formData: FormData, key: string) {
   return Number(getText(formData, key));
 }
 
+function getTimeParts(formData: FormData, key: string) {
+  const value = getText(formData, key);
+  const match = value.match(/^(\d{1,2})(?::([0-5]\d))?\s*([ap]m)$/i);
+
+  if (!match) {
+    throw new Error("Enter times like 7:30 PM.");
+  }
+
+  const hour12 = Number(match[1]);
+  const minute = match[2] ? Number(match[2]) : 0;
+  const period = match[3].toLowerCase();
+
+  if (hour12 < 1 || hour12 > 12) {
+    throw new Error("Use a 12-hour time between 1:00 AM and 12:59 PM.");
+  }
+
+  return {
+    hour: period === "pm" ? (hour12 % 12) + 12 : hour12 % 12,
+    minute,
+  };
+}
+
 function buildReservationRequest(formData: FormData) {
   const preferredType = getText(formData, "preferred_type");
   const idealDate = getText(formData, "ideal_date");
   const daysInAdvance = getText(formData, "days_in_advance");
+  const idealTime = getTimeParts(formData, "ideal_time");
 
   if (!idealDate && !daysInAdvance) {
     throw new Error("Choose either a reservation date or days in advance.");
@@ -84,8 +107,8 @@ function buildReservationRequest(formData: FormData) {
     venue_name: getText(formData, "venue_name") || null,
     venue_location: getText(formData, "venue_location") || null,
     party_size: getNumber(formData, "party_size"),
-    ideal_hour: getNumber(formData, "ideal_hour"),
-    ideal_minute: getNumber(formData, "ideal_minute"),
+    ideal_hour: idealTime.hour,
+    ideal_minute: idealTime.minute,
     window_hours: getNumber(formData, "window_hours"),
     prefer_early: formData.get("prefer_early") === "on",
     preferred_type: preferredType || null,
@@ -189,10 +212,11 @@ async function createReservation(formData: FormData) {
   let nextPath = "/ssr";
 
   try {
+    const dropTime = getTimeParts(formData, "expected_drop_time");
     const body = {
       reservation_request: buildReservationRequest(formData),
-      expected_drop_hour: getNumber(formData, "expected_drop_hour"),
-      expected_drop_minute: getNumber(formData, "expected_drop_minute"),
+      expected_drop_hour: dropTime.hour,
+      expected_drop_minute: dropTime.minute,
     };
     const response = await apiRequest<{ job_id: string }>("/reserve", {
       method: "POST",
@@ -314,7 +338,7 @@ export default async function SsrPage({
 
           <form
             action={checkSlots}
-            className={`space-y-5 rounded-lg border border-neutral-200 bg-white p-5 shadow-sm ${
+            className={`reservation-form space-y-5 rounded-lg border border-neutral-200 bg-white p-5 shadow-sm ${
               apiOffline ? "opacity-60" : ""
             }`}
           >
@@ -345,12 +369,17 @@ export default async function SsrPage({
                 <input name="days_in_advance" type="number" min="1" className="h-10 w-full rounded-md border border-neutral-300 px-3" />
               </label>
               <label className="space-y-2 text-sm font-medium">
-                Ideal Hour
-                <input name="ideal_hour" type="number" min="0" max="23" defaultValue="19" required className="h-10 w-full rounded-md border border-neutral-300 px-3" />
-              </label>
-              <label className="space-y-2 text-sm font-medium">
-                Ideal Minute
-                <input name="ideal_minute" type="number" min="0" max="59" defaultValue="30" required className="h-10 w-full rounded-md border border-neutral-300 px-3" />
+                Ideal Time
+                <input
+                  name="ideal_time"
+                  type="text"
+                  inputMode="text"
+                  pattern="^(1[0-2]|0?[1-9])(:[0-5][0-9])?\s*([AaPp][Mm])$"
+                  placeholder="7:30 PM"
+                  defaultValue="7:30 PM"
+                  required
+                  className="h-10 w-full rounded-md border border-neutral-300 px-3"
+                />
               </label>
               <label className="space-y-2 text-sm font-medium">
                 Window Hours
@@ -367,13 +396,18 @@ export default async function SsrPage({
                   <option value="monitor">Monitor</option>
                 </select>
               </label>
-              <label className="space-y-2 text-sm font-medium">
-                Drop Hour
-                <input name="expected_drop_hour" type="number" min="0" max="23" defaultValue="10" required className="h-10 w-full rounded-md border border-neutral-300 px-3" />
-              </label>
-              <label className="space-y-2 text-sm font-medium">
-                Drop Minute
-                <input name="expected_drop_minute" type="number" min="0" max="59" defaultValue="0" required className="h-10 w-full rounded-md border border-neutral-300 px-3" />
+              <label data-drop-time className="space-y-2 text-sm font-medium">
+                Drop Time
+                <input
+                  name="expected_drop_time"
+                  type="text"
+                  inputMode="text"
+                  pattern="^(1[0-2]|0?[1-9])(:[0-5][0-9])?\s*([AaPp][Mm])$"
+                  placeholder="10:00 AM"
+                  defaultValue="10:00 AM"
+                  required
+                  className="h-10 w-full rounded-md border border-neutral-300 px-3"
+                />
               </label>
               <label className="flex items-center gap-2 self-end text-sm font-medium">
                 <input name="prefer_early" type="checkbox" className="size-4 rounded border-neutral-300" />
