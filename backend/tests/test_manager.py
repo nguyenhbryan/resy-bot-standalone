@@ -147,7 +147,7 @@ def test_make_reservation_with_retries(mock_make_reservation):
     mock_selector = MagicMock()
     retry_config = ReservationRetriesConfig(
         seconds_between_retries=0.1,
-        retry_duration=1,
+        n_retries=10,
     )
 
     request = ReservationRequestFactory.create()
@@ -166,7 +166,7 @@ def test_get_drop_time():
     mock_selector = MagicMock()
     retry_config = ReservationRetriesConfig(
         seconds_between_retries=0.1,
-        retry_duration=1,
+        n_retries=10,
     )
 
     request = TimedReservationRequestFactory.create()
@@ -201,7 +201,7 @@ def test_make_reservation_at_opening_time(mock_make_reservation, mock_dt):
     mock_selector = MagicMock()
     retry_config = ReservationRetriesConfig(
         seconds_between_retries=0.1,
-        retry_duration=1,
+        n_retries=10,
     )
 
     manager = ResyManager(config, mock_api_access, mock_selector, retry_config)

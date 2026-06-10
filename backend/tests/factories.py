@@ -3,6 +3,7 @@ from datetime import date, datetime
 from random import randint
 
 from resy_bot.models import (
+    BookingMethod,
     ResyConfig,
     ReservationRequest,
     ReservationRetriesConfig,
@@ -37,6 +38,7 @@ class ReservationRequestFactory(factory.Factory):
     window_hours = factory.LazyFunction(lambda: randint(0, 4))
     prefer_early = factory.Faker("boolean")
     preferred_type = factory.Faker("bs")
+    method = BookingMethod.SCHEDULED
 
 
 class ReservationRequestDaysInAdvanceFactory(factory.Factory):
@@ -51,6 +53,7 @@ class ReservationRequestDaysInAdvanceFactory(factory.Factory):
     window_hours = factory.LazyFunction(lambda: randint(0, 4))
     prefer_early = factory.Faker("boolean")
     preferred_type = factory.Faker("bs")
+    method = BookingMethod.SCHEDULED
 
 
 class ReservationRetriesConfigFactory(factory.Factory):
@@ -58,7 +61,7 @@ class ReservationRetriesConfigFactory(factory.Factory):
         model = ReservationRetriesConfig
 
     seconds_between_retries = factory.LazyFunction(lambda: randint(0, 100) / 100)
-    retry_duration = factory.LazyFunction(lambda: randint(1, 10))
+    n_retries = factory.LazyFunction(lambda: randint(1, 10))
 
 
 class TimedReservationRequestFactory(factory.Factory):

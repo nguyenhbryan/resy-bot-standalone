@@ -1,8 +1,14 @@
+import time
 from datetime import datetime, timedelta
+from threading import Event
 from typing import List
 
 from resy_bot.logging_config import logging
-from resy_bot.errors import NoSlotsError, ExhaustedRetriesError
+from resy_bot.errors import (
+    ExhaustedRetriesError,
+    NoSlotsError,
+    ReservationCancelledError,
+)
 from resy_bot.constants import (
     N_RETRIES,
     SECONDS_TO_WAIT_BETWEEN_RETRIES,
@@ -23,6 +29,11 @@ from resy_bot.selectors import AbstractSelector, SimpleSelector
 
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
+
+
+def _raise_if_cancelled(cancel_event: Event | None) -> None:
+    if cancel_event and cancel_event.is_set():
+        raise ReservationCancelledError("Reservation job was cancelled")
 
 
 class ResyManager:
@@ -90,9 +101,13 @@ class ResyManager:
         return resy_token
 
     def make_reservation_with_retries(
-        self, reservation_request: ReservationRequest
+        self,
+        reservation_request: ReservationRequest,
+        cancel_event: Event | None = None,
     ) -> str:
         for _ in range(self.retry_config.n_retries):
+            _raise_if_cancelled(cancel_event)
+
             try:
                 return self.make_reservation(reservation_request)
 
@@ -100,6 +115,10 @@ class ResyManager:
                 logger.info(
                     f"no slots, retrying; currently {datetime.now().isoformat()}"
                 )
+                if cancel_event:
+                    cancel_event.wait(self.retry_config.seconds_between_retries)
+                else:
+                    time.sleep(self.retry_config.seconds_between_retries)
 
         raise ExhaustedRetriesError(
             f"Retried {self.retry_config.n_retries} times, " "without finding a slot"
@@ -116,7 +135,9 @@ class ResyManager:
         )
 
     def make_reservation_at_opening_time(
-        self, reservation_request: TimedReservationRequest
+        self,
+        reservation_request: TimedReservationRequest,
+        cancel_event: Event | None = None,
     ) -> str:
         """
         cycle until we hit the opening time, then run & return the reservation
@@ -125,13 +146,20 @@ class ResyManager:
         last_check = datetime.now()
 
         while True:
+            _raise_if_cancelled(cancel_event)
+
             if datetime.now() < drop_time:
                 if datetime.now() - last_check > timedelta(seconds=10):
                     logger.info(f"{datetime.now()}: still waiting")
                     last_check = datetime.now()
+                if cancel_event:
+                    cancel_event.wait(0.25)
+                else:
+                    time.sleep(0.25)
                 continue
 
             logger.info(f"time reached, making a reservation now! {datetime.now()}")
             return self.make_reservation_with_retries(
-                reservation_request.reservation_request
+                reservation_request.reservation_request,
+                cancel_event,
             )

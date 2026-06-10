@@ -87,10 +87,10 @@ class ResyApiAccess:
         if parsed_resp.results.venues:
             slots = parsed_resp.results.venues[0].slots
             logger.info(f"Available slots: {[slot.date.start for slot in slots]}")
+            return slots
         else:
             logger.info("No venues returned in response.")
-
-        return parsed_resp.results.venues[0].slots
+            return []
 
     def get_booking_token(self, params: DetailsRequestBody) -> DetailsResponseBody:
         details_url = RESY_BASE_URL + ResyEndpoints.DETAILS.value
