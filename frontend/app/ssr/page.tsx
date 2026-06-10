@@ -28,6 +28,8 @@ type JobStatus =
 type ReservationJob = {
   id: string;
   status: JobStatus;
+  created_at?: string;
+  updated_at?: string;
   reservation_token?: string | null;
   error?: string | null;
 };
@@ -187,16 +189,14 @@ async function cancelJob(formData: FormData) {
   "use server";
 
   const jobId = getText(formData, "job_id");
-  let nextPath = `/ssr?job=${encodeURIComponent(jobId)}`;
+  let nextPath = "/ssr";
 
   try {
     await apiRequest<ReservationJob>(`/jobs/${jobId}/cancel`, {
       method: "POST",
     });
   } catch (error) {
-    nextPath = `/ssr?job=${encodeURIComponent(jobId)}&error=${encodeURIComponent(
-      (error as Error).message,
-    )}`;
+    nextPath = `/ssr?error=${encodeURIComponent((error as Error).message)}`;
   }
 
   redirect(nextPath);
@@ -223,6 +223,30 @@ async function getJob(jobId?: string | string[]) {
   }
 }
 
+async function getJobs() {
+  try {
+    return apiRequest<ReservationJob[]>("/jobs");
+  } catch {
+    return [];
+  }
+}
+
+function canCancelJob(job: ReservationJob) {
+  return (
+    job.status === "pending" ||
+    job.status === "running" ||
+    job.status === "cancelling"
+  );
+}
+
+function formatDateTime(value?: string) {
+  if (!value) {
+    return null;
+  }
+
+  return new Date(value).toLocaleString();
+}
+
 export default async function SsrPage({
   searchParams,
 }: {
@@ -238,14 +262,14 @@ export default async function SsrPage({
 
   const params = await searchParams;
   const slots = decodeSlots(params?.slots);
-  const job = await getJob(params?.job);
+  const [selectedJob, jobs] = await Promise.all([getJob(params?.job), getJobs()]);
   const health = await getHealth();
   const error = typeof params?.error === "string" ? params.error : null;
   const apiOffline = health === "offline";
-  const canCancel =
-    job?.status === "pending" ||
-    job?.status === "running" ||
-    job?.status === "cancelling";
+  const visibleJobs =
+    selectedJob && !jobs.some((job) => job.id === selectedJob.id)
+      ? [selectedJob, ...jobs]
+      : jobs;
 
   return (
     <main className="min-h-screen bg-neutral-50 px-5 py-6 text-neutral-950 sm:px-8">
@@ -352,36 +376,43 @@ export default async function SsrPage({
 
         <aside className="space-y-4">
           <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-semibold">Job Status</h2>
-            {job ? (
-              <div className="mt-3 space-y-2 text-sm">
-                <p>
-                  <span className="font-medium">ID:</span> {job.id}
-                </p>
-                <p className="capitalize">
-                  <span className="font-medium">Status:</span> {job.status}
-                </p>
-                {job.reservation_token ? (
-                  <p className="break-all">
-                    <span className="font-medium">Token:</span> {job.reservation_token}
-                  </p>
-                ) : null}
-                {job.error ? <p className="text-red-700">{job.error}</p> : null}
-                {canCancel ? (
-                  <form action={cancelJob}>
-                    <input type="hidden" name="job_id" value={job.id} />
-                    <button
-                      type="submit"
-                      disabled={job.status === "cancelling"}
-                      className="mt-2 h-10 rounded-md border border-red-300 px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Cancel Job
-                    </button>
-                  </form>
-                ) : null}
+            <h2 className="text-lg font-semibold">Jobs</h2>
+            {visibleJobs.length ? (
+              <div className="mt-3 space-y-3">
+                {visibleJobs.map((job) => (
+                  <div key={job.id} className="rounded-md border border-neutral-200 p-3 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-medium capitalize">{job.status}</p>
+                      {formatDateTime(job.created_at) ? (
+                        <p className="text-xs text-neutral-500">{formatDateTime(job.created_at)}</p>
+                      ) : null}
+                    </div>
+                    <p className="mt-2 break-all text-xs text-neutral-600">
+                      {job.id}
+                    </p>
+                    {job.reservation_token ? (
+                      <p className="mt-2 break-all">
+                        <span className="font-medium">Token:</span> {job.reservation_token}
+                      </p>
+                    ) : null}
+                    {job.error ? <p className="mt-2 text-red-700">{job.error}</p> : null}
+                    {canCancelJob(job) ? (
+                      <form action={cancelJob}>
+                        <input type="hidden" name="job_id" value={job.id} />
+                        <button
+                          type="submit"
+                          disabled={job.status === "cancelling"}
+                          className="mt-3 h-10 rounded-md border border-red-300 px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Cancel Job
+                        </button>
+                      </form>
+                    ) : null}
+                  </div>
+                ))}
               </div>
             ) : (
-              <p className="mt-3 text-sm text-neutral-600">No active job.</p>
+              <p className="mt-3 text-sm text-neutral-600">No jobs yet.</p>
             )}
           </section>
 

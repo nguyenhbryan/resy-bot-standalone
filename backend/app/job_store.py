@@ -114,6 +114,26 @@ class JobStore:
 
         return self._row_to_job(row) if row else None
 
+    def list_jobs(self) -> list[StoredJob]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    id,
+                    status,
+                    request_json,
+                    reservation_token,
+                    error,
+                    cancel_requested,
+                    created_at,
+                    updated_at
+                FROM jobs
+                ORDER BY created_at DESC
+                """
+            ).fetchall()
+
+        return [self._row_to_job(row) for row in rows]
+
     def set_job(
         self,
         job_id: str,

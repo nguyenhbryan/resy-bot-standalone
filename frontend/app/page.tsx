@@ -40,6 +40,14 @@ export default async function Home({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const accessToken = getAccessToken();
+  const cookieStore = await cookies();
+  const userToken = cookieStore.get("resy_access")?.value;
+
+  if (accessToken && userToken === accessToken) {
+    redirect("/ssr");
+  }
+
   const params = await searchParams;
   const hasError = params?.error === "1";
 

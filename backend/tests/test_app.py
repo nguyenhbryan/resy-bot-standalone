@@ -91,6 +91,29 @@ def test_reserve_persists_job(monkeypatch):
     assert stored_job.reservation_token == "reservation-token"
 
 
+def test_list_jobs(monkeypatch):
+    request = TimedReservationRequestFactory.create()
+
+    monkeypatch.setattr(
+        main_module.reservation_service,
+        "reserve",
+        lambda *_, **__: "reservation-token",
+    )
+
+    response = client.post("/reserve", json=request.model_dump(mode="json"))
+
+    assert response.status_code == 202
+
+    jobs_response = client.get("/jobs")
+
+    assert jobs_response.status_code == 200
+    jobs = jobs_response.json()
+    assert len(jobs) == 1
+    assert jobs[0]["id"] == response.json()["job_id"]
+    assert jobs[0]["status"] == "succeeded"
+    assert jobs[0]["reservation_token"] == "reservation-token"
+
+
 def test_get_job_not_found():
     response = client.get("/jobs/missing")
 

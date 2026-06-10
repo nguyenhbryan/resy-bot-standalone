@@ -55,6 +55,8 @@ class ReserveResponse(BaseModel):
 class ReservationJob(BaseModel):
     id: str
     status: JobStatus
+    created_at: str
+    updated_at: str
     reservation_token: str | None = None
     error: str | None = None
 
@@ -76,6 +78,8 @@ def _to_response_job(job: StoredJob) -> ReservationJob:
     return ReservationJob(
         id=job.id,
         status=JobStatus(job.status),
+        created_at=job.created_at,
+        updated_at=job.updated_at,
         reservation_token=job.reservation_token,
         error=job.error,
     )
@@ -199,6 +203,11 @@ async def reserve(
     background_tasks.add_task(_run_reservation_job, job_id, request)
 
     return ReserveResponse(job_id=job_id, status=JobStatus.PENDING)
+
+
+@app.get("/jobs", response_model=list[ReservationJob])
+def list_jobs() -> list[ReservationJob]:
+    return [_to_response_job(job) for job in job_store.list_jobs()]
 
 
 @app.get("/jobs/{job_id}", response_model=ReservationJob)
