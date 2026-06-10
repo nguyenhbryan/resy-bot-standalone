@@ -1,7 +1,9 @@
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from os import environ
 from threading import Event
 from typing import List
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from resy_bot.logging_config import logging
 from resy_bot.errors import (
@@ -32,6 +34,20 @@ from resy_bot.venue_resolver import VenueCandidate, VenueResolver
 logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
 
+DEFAULT_APP_TIMEZONE = "America/New_York"
+
+
+def _load_app_timezone() -> ZoneInfo:
+    timezone_name = environ.get("APP_TIMEZONE", DEFAULT_APP_TIMEZONE)
+
+    try:
+        return ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError(
+            f"Invalid APP_TIMEZONE {timezone_name!r}; use an IANA timezone "
+            "like 'America/New_York'."
+        ) from exc
+
 
 def _raise_if_cancelled(cancel_event: Event | None) -> None:
     if cancel_event and cancel_event.is_set():
@@ -56,12 +72,14 @@ class ResyManager:
         slot_selector: AbstractSelector,
         retry_config: ReservationRetriesConfig,
         venue_resolver: VenueResolver | None = None,
+        app_timezone: ZoneInfo | None = None,
     ):
         self.config = config
         self.api_access = api_access
         self.selector = slot_selector
         self.retry_config = retry_config
         self.venue_resolver = venue_resolver or VenueResolver(api_access)
+        self.app_timezone = app_timezone or _load_app_timezone()
 
     def get_venue_id(self, name: str, location: str | None = None) -> str:
         return self.venue_resolver.resolve(name, location)
@@ -192,15 +210,24 @@ class ResyManager:
             f"Retried {self.retry_config.n_retries} times, " "without finding a slot"
         )
 
-    def _get_drop_time(self, reservation_request: TimedReservationRequest) -> datetime:
-        now = datetime.now()
-        return datetime(
-            year=now.year,
-            month=now.month,
-            day=now.day,
+    def _now(self) -> datetime:
+        return datetime.now(UTC)
+
+    def _get_drop_time(
+        self,
+        reservation_request: TimedReservationRequest,
+        now: datetime | None = None,
+    ) -> datetime:
+        local_now = (now or self._now()).astimezone(self.app_timezone)
+        local_drop_time = datetime(
+            year=local_now.year,
+            month=local_now.month,
+            day=local_now.day,
             hour=reservation_request.expected_drop_hour,
             minute=reservation_request.expected_drop_minute,
+            tzinfo=self.app_timezone,
         )
+        return local_drop_time.astimezone(UTC)
 
     def make_reservation_at_opening_time(
         self,
@@ -211,22 +238,23 @@ class ResyManager:
         cycle until we hit the opening time, then run & return the reservation
         """
         drop_time = self._get_drop_time(reservation_request)
-        last_check = datetime.now()
+        last_check = self._now()
 
         while True:
             _raise_if_cancelled(cancel_event)
 
-            if datetime.now() < drop_time:
-                if datetime.now() - last_check > timedelta(seconds=10):
-                    logger.info(f"{datetime.now()}: still waiting")
-                    last_check = datetime.now()
+            now = self._now()
+            if now < drop_time:
+                if now - last_check > timedelta(seconds=10):
+                    logger.info(f"{now}: still waiting")
+                    last_check = now
                 if cancel_event:
                     cancel_event.wait(0.25)
                 else:
                     time.sleep(0.25)
                 continue
 
-            logger.info(f"time reached, making a reservation now! {datetime.now()}")
+            logger.info(f"time reached, making a reservation now! {self._now()}")
             return self.make_reservation_with_retries(
                 reservation_request.reservation_request,
                 cancel_event,
