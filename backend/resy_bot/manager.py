@@ -89,6 +89,26 @@ class ResyManager:
             self.venue_resolver.resolve_candidate(name, location)
         )
 
+    def resolve_reservation_request(
+        self,
+        reservation_request: ReservationRequest,
+    ) -> ReservationRequest:
+        resolved_request, venue = self._resolve_request_venue(
+            reservation_request,
+            include_venue_info=True,
+        )
+
+        if not venue:
+            return resolved_request
+
+        return resolved_request.model_copy(
+            update={
+                "venue_id": venue.venue_id,
+                "venue_name": venue.name,
+                "venue_location": venue.locality or resolved_request.venue_location,
+            }
+        )
+
     def _resolve_request_venue(
         self,
         reservation_request: ReservationRequest,

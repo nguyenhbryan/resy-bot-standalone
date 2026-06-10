@@ -202,6 +202,33 @@ def test_check_slots_with_venue_loads_name_for_venue_id():
     mock_api_access.get_venue_config.assert_called_once_with("74751")
 
 
+def test_resolve_reservation_request_uses_official_venue_name_for_venue_id():
+    config = ResyConfigFactory.create()
+    retries_config = ReservationRetriesConfigFactory.create()
+    request = ReservationRequestFactory.create(
+        venue_id="74751",
+        venue_name="typed name",
+        venue_location="typed location",
+    )
+    mock_api_access = MagicMock()
+    mock_api_access.get_venue_config.return_value = VenueCandidate(
+        venue_id="74751",
+        name="Southeast Impression",
+        locality="Fairfax",
+        region="VA",
+    )
+    mock_selector = MagicMock()
+
+    manager = ResyManager(config, mock_api_access, mock_selector, retries_config)
+
+    resolved_request = manager.resolve_reservation_request(request)
+
+    assert resolved_request.venue_id == "74751"
+    assert resolved_request.venue_name == "Southeast Impression"
+    assert resolved_request.venue_location == "Fairfax"
+    mock_api_access.get_venue_config.assert_called_once_with("74751")
+
+
 def test_make_reservation_no_slots():
     config = ResyConfigFactory.create()
     retries_config = ReservationRetriesConfigFactory.create()

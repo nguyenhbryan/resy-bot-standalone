@@ -81,6 +81,11 @@ def test_reserve_creates_job(monkeypatch):
 
     monkeypatch.setattr(
         main_module.reservation_service,
+        "resolve_timed_reservation_request",
+        lambda _: request,
+    )
+    monkeypatch.setattr(
+        main_module.reservation_service,
         "reserve",
         lambda *_, **__: "reservation-token",
     )
@@ -118,6 +123,11 @@ def test_reserve_persists_job(monkeypatch):
 
     monkeypatch.setattr(
         main_module.reservation_service,
+        "resolve_timed_reservation_request",
+        lambda _: request,
+    )
+    monkeypatch.setattr(
+        main_module.reservation_service,
         "reserve",
         lambda *_, **__: "reservation-token",
     )
@@ -134,6 +144,11 @@ def test_reserve_persists_job(monkeypatch):
 def test_list_jobs(monkeypatch):
     request = TimedReservationRequestFactory.create()
 
+    monkeypatch.setattr(
+        main_module.reservation_service,
+        "resolve_timed_reservation_request",
+        lambda _: request,
+    )
     monkeypatch.setattr(
         main_module.reservation_service,
         "reserve",
@@ -153,6 +168,54 @@ def test_list_jobs(monkeypatch):
     assert jobs[0]["status"] == "succeeded"
     assert jobs[0]["reservation_token"] == "reservation-token"
     assert jobs[0]["reservation"]["party_size"] == request.reservation_request.party_size
+
+
+def test_reserve_stores_resolved_venue_details(monkeypatch):
+    request = TimedReservationRequestFactory.create(
+        reservation_request=ReservationRequestFactory.create(
+            venue_id=None,
+            venue_name="user typed name",
+            venue_location="nyc",
+        ),
+    )
+    resolved_request = request.model_copy(
+        update={
+            "reservation_request": request.reservation_request.model_copy(
+                update={
+                    "venue_id": "9802",
+                    "venue_name": "Carbone",
+                    "venue_location": "New York",
+                }
+            )
+        }
+    )
+    captured = {}
+
+    monkeypatch.setattr(
+        main_module.reservation_service,
+        "resolve_timed_reservation_request",
+        lambda _: resolved_request,
+    )
+
+    def reserve_resolved(reservation_request, *_, **__):
+        captured["request"] = reservation_request
+        return "reservation-token"
+
+    monkeypatch.setattr(
+        main_module.reservation_service,
+        "reserve",
+        reserve_resolved,
+    )
+
+    response = client.post("/reserve", json=request.model_dump(mode="json"))
+
+    assert response.status_code == 202
+    job = client.get(f"/jobs/{response.json()['job_id']}").json()
+    assert job["reservation"]["restaurant_name"] == "Carbone"
+    assert job["reservation"]["venue_id"] == "9802"
+    assert job["reservation"]["venue_location"] == "New York"
+    assert captured["request"]["reservation_request"]["venue_name"] == "Carbone"
+    assert captured["request"]["reservation_request"]["venue_id"] == "9802"
 
 
 def test_get_job_not_found():

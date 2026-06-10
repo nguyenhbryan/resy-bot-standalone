@@ -58,6 +58,15 @@ def check_slots_with_venue(reservation_request: dict) -> tuple[list[Slot], Resol
     return manager.check_slots_with_venue(request)
 
 
+def resolve_timed_reservation_request(reservation_request: dict) -> TimedReservationRequest:
+    config = load_resy_config()
+    manager = ResyManager.build(config)
+    request = TimedReservationRequest(**reservation_request)
+    resolved_request = manager.resolve_reservation_request(request.reservation_request)
+
+    return request.model_copy(update={"reservation_request": resolved_request})
+
+
 def reserve(
     reservation_request: dict,
     resy_config: dict | None = None,

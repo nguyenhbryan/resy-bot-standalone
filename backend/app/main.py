@@ -258,6 +258,14 @@ async def slots(request: ReservationRequest) -> SlotsResponse:
 async def reserve(
     request: TimedReservationRequest, background_tasks: BackgroundTasks
 ) -> ReserveResponse:
+    try:
+        request = await run_in_threadpool(
+            reservation_service.resolve_timed_reservation_request,
+            request.model_dump(),
+        )
+    except Exception as exc:
+        raise _map_exception(exc) from exc
+
     job_id = str(uuid4())
     job_store.create_job(
         job_id,
