@@ -62,10 +62,16 @@ RESY_TOKEN=your_resy_auth_token
 RESY_PAYMENT_METHOD_ID=123456
 RESY_EMAIL=you@example.com
 RESY_PASSWORD=your_resy_password
+APP_TIMEZONE=America/New_York
 CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 SQLITE_PATH=/tmp/resy-bot-jobs.db
 RESY_VENUE_CACHE_PATH=/tmp/resy-bot-venues.db
 ```
+
+Scheduled drop times are interpreted in `APP_TIMEZONE` and converted to UTC
+internally, so Docker containers can keep their default UTC clock. Use an IANA
+timezone like `America/New_York` instead of `EDT` so daylight saving time is
+handled automatically.
 
 Create `frontend/.env` with an access key for the web console:
 
