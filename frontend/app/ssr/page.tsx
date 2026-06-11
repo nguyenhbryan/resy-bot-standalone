@@ -500,7 +500,7 @@ export default async function SsrPage({
           <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-semibold">Jobs</h2>
             {visibleJobs.length ? (
-              <div className="mt-3 space-y-3">
+              <div className="mt-3 max-h-[36.75rem] space-y-3 overflow-y-auto pr-1">
                 {visibleJobs.map((job) => (
                   <div key={job.id} className="rounded-md border border-neutral-200 p-3 text-sm">
                     <div className="flex items-center justify-between gap-3">

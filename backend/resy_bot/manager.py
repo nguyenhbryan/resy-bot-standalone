@@ -247,6 +247,10 @@ class ResyManager:
             minute=reservation_request.expected_drop_minute,
             tzinfo=self.app_timezone,
         )
+        local_now_minute = local_now.replace(second=0, microsecond=0)
+        if local_drop_time < local_now_minute:
+            local_drop_time += timedelta(days=1)
+
         return local_drop_time.astimezone(UTC)
 
     def make_reservation_at_opening_time(

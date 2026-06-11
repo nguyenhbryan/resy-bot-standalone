@@ -324,9 +324,39 @@ def test_get_drop_time_converts_new_york_time_to_utc():
     assert drop_time == datetime(2026, 6, 10, 14, 30, tzinfo=UTC)
 
 
+def test_get_drop_time_uses_next_day_when_drop_time_has_passed():
+    config = ResyConfigFactory.create()
+    mock_api_access = MagicMock()
+    mock_selector = MagicMock()
+    retry_config = ReservationRetriesConfig(
+        seconds_between_retries=0.1,
+        n_retries=10,
+    )
+
+    request = TimedReservationRequestFactory.create(
+        expected_drop_hour=10,
+        expected_drop_minute=30,
+    )
+
+    manager = ResyManager(
+        config,
+        mock_api_access,
+        mock_selector,
+        retry_config,
+        app_timezone=ZoneInfo("America/New_York"),
+    )
+
+    drop_time = manager._get_drop_time(
+        request,
+        datetime(2026, 6, 10, 15, 0, tzinfo=UTC),
+    )
+
+    assert drop_time == datetime(2026, 6, 11, 14, 30, tzinfo=UTC)
+
+
 @patch("resy_bot.manager.ResyManager.make_reservation_with_retries")
 def test_make_reservation_at_opening_time(mock_make_reservation):
-    now = datetime.now(UTC)
+    now = datetime(2026, 6, 10, 14, 30, 15, tzinfo=UTC)
     request = TimedReservationRequestFactory.create(
         expected_drop_hour=now.astimezone(ZoneInfo("America/New_York")).hour,
         expected_drop_minute=now.astimezone(ZoneInfo("America/New_York")).minute,
@@ -348,7 +378,7 @@ def test_make_reservation_at_opening_time(mock_make_reservation):
         app_timezone=ZoneInfo("America/New_York"),
     )
 
-    with patch.object(manager, "_now", return_value=now + timedelta(minutes=1)):
+    with patch.object(manager, "_now", return_value=now):
         manager.make_reservation_at_opening_time(request)
 
     mock_make_reservation.assert_called_once()
