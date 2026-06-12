@@ -3,6 +3,8 @@ import { Buffer } from "buffer";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { ReservationForm } from "./reservation-form";
+
 export const dynamic = "force-dynamic";
 
 type ApiSlot = {
@@ -393,107 +395,12 @@ export default async function SsrPage({
             </span>
           </div>
 
-          <form
-            action={checkSlots}
-            className={`reservation-form space-y-5 rounded-lg border border-neutral-200 bg-white p-5 shadow-sm ${
-              apiOffline ? "opacity-60" : ""
-            }`}
-          >
-            <fieldset disabled={apiOffline} className="space-y-5 disabled:cursor-not-allowed">
-              <div className="grid gap-4 sm:grid-cols-2">
-              <label className="space-y-2 text-sm font-medium">
-                Venue Name
-                <input name="venue_name" placeholder="Carbone" className="h-10 w-full rounded-md border border-neutral-300 px-3" />
-              </label>
-              <label className="space-y-2 text-sm font-medium">
-                City or Region
-                <input name="venue_location" placeholder="New York" className="h-10 w-full rounded-md border border-neutral-300 px-3" />
-              </label>
-              <label className="space-y-2 text-sm font-medium">
-                Venue ID
-                <input name="venue_id" placeholder="Optional" className="h-10 w-full rounded-md border border-neutral-300 px-3" />
-              </label>
-              <label className="space-y-2 text-sm font-medium">
-                Party Size
-                <input name="party_size" type="number" min="1" defaultValue="2" required className="h-10 w-full rounded-md border border-neutral-300 px-3" />
-              </label>
-              <label className="space-y-2 text-sm font-medium">
-                Date
-                <input name="ideal_date" type="date" className="h-10 w-full rounded-md border border-neutral-300 px-3" />
-              </label>
-              <label className="space-y-2 text-sm font-medium">
-                Days In Advance
-                <input name="days_in_advance" type="number" min="1" className="h-10 w-full rounded-md border border-neutral-300 px-3" />
-              </label>
-              <label className="space-y-2 text-sm font-medium">
-                Ideal Time
-                <input
-                  name="ideal_time"
-                  type="text"
-                  inputMode="text"
-                  pattern="^(1[0-2]|0?[1-9])(:[0-5][0-9])?\s*([AaPp][Mm])$"
-                  placeholder="7:30 PM"
-                  defaultValue="7:30 PM"
-                  required
-                  className="h-10 w-full rounded-md border border-neutral-300 px-3"
-                />
-              </label>
-              <label className="space-y-2 text-sm font-medium">
-                Window Hours
-                <input name="window_hours" type="number" min="0" defaultValue="1" required className="h-10 w-full rounded-md border border-neutral-300 px-3" />
-              </label>
-              <label className="space-y-2 text-sm font-medium">
-                Seating Type
-                <input name="preferred_type" placeholder="Dining Room" className="h-10 w-full rounded-md border border-neutral-300 px-3" />
-              </label>
-              <label className="space-y-2 text-sm font-medium">
-                Method
-                <select name="method" defaultValue="scheduled" className="h-10 w-full rounded-md border border-neutral-300 px-3">
-                  <option value="scheduled">Scheduled</option>
-                  <option value="monitor">Monitor</option>
-                </select>
-              </label>
-              <label data-drop-time className="space-y-2 text-sm font-medium">
-                Drop Time
-                <input
-                  name="expected_drop_time"
-                  type="text"
-                  inputMode="text"
-                  pattern="^(1[0-2]|0?[1-9])(:[0-5][0-9])?\s*([AaPp][Mm])$"
-                  placeholder="10:00 AM"
-                  defaultValue="10:00 AM"
-                  required
-                  className="h-10 w-full rounded-md border border-neutral-300 px-3"
-                />
-              </label>
-              <label className="flex items-center gap-2 self-end text-sm font-medium">
-                <input name="prefer_early" type="checkbox" className="size-4 rounded border-neutral-300" />
-                Prefer earlier slot
-              </label>
-              </div>
-
-              {apiOffline ? (
-                <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
-                  FastAPI is offline. Start the backend before checking slots or booking.
-                </p>
-              ) : null}
-
-              {error ? (
-                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
-                  {error}
-                </p>
-              ) : null}
-
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <button type="submit" className="h-11 rounded-md bg-neutral-950 px-4 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:bg-neutral-400">
-                  Check Slots
-                </button>
-                <button formAction={createReservation} className="h-11 rounded-md bg-emerald-600 px-4 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-neutral-400">
-                  Book Reservation
-                </button>
-              </div>
-            </fieldset>
-          </form>
+          <ReservationForm
+            apiOffline={apiOffline}
+            error={error}
+            checkSlotsAction={checkSlots}
+            createReservationAction={createReservation}
+          />
         </div>
 
         <aside className="space-y-4">
