@@ -66,6 +66,12 @@ type ReservationJob = {
   error?: string | null;
 };
 
+const terminalJobStatuses = new Set<JobStatus>([
+  "cancelled",
+  "succeeded",
+  "failed",
+]);
+
 const apiBaseUrl = process.env.FASTAPI_URL ?? "http://127.0.0.1:8000";
 
 function getAccessToken() {
@@ -380,6 +386,86 @@ function reservationDate(reservation?: ReservationDetails | null) {
   return null;
 }
 
+function JobCard({ job }: { job: ReservationJob }) {
+  return (
+    <div className="rounded-md border border-neutral-200 p-3 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-medium capitalize">{job.status}</p>
+        {formatDateTime(job.created_at) ? (
+          <p className="text-xs text-neutral-500">{formatDateTime(job.created_at)}</p>
+        ) : null}
+      </div>
+      <p className="mt-2 break-all text-xs text-neutral-600">{job.id}</p>
+      {job.reservation ? (
+        <div className="mt-3 space-y-2 rounded-md bg-neutral-50 p-3">
+          <div>
+            <p className="font-medium">{reservationTitle(job.reservation)}</p>
+            {job.reservation.venue_location ? (
+              <p className="text-xs text-neutral-500">{job.reservation.venue_location}</p>
+            ) : null}
+          </div>
+          <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+            {job.reservation.party_size ? (
+              <>
+                <dt className="text-neutral-500">Party</dt>
+                <dd className="font-medium">{job.reservation.party_size}</dd>
+              </>
+            ) : null}
+            {reservationDate(job.reservation) ? (
+              <>
+                <dt className="text-neutral-500">Date</dt>
+                <dd className="font-medium">{reservationDate(job.reservation)}</dd>
+              </>
+            ) : null}
+            {job.reservation.ideal_time ? (
+              <>
+                <dt className="text-neutral-500">Time</dt>
+                <dd className="font-medium">{job.reservation.ideal_time}</dd>
+              </>
+            ) : null}
+            {job.reservation.expected_drop_time ? (
+              <>
+                <dt className="text-neutral-500">Drop</dt>
+                <dd className="font-medium">{job.reservation.expected_drop_time}</dd>
+              </>
+            ) : null}
+            {job.reservation.preferred_type ? (
+              <>
+                <dt className="text-neutral-500">Seating</dt>
+                <dd className="font-medium">{job.reservation.preferred_type}</dd>
+              </>
+            ) : null}
+            {job.reservation.method ? (
+              <>
+                <dt className="text-neutral-500">Method</dt>
+                <dd className="font-medium capitalize">{job.reservation.method}</dd>
+              </>
+            ) : null}
+          </dl>
+        </div>
+      ) : null}
+      {job.reservation_token ? (
+        <p className="mt-2 break-all">
+          <span className="font-medium">Token:</span> {job.reservation_token}
+        </p>
+      ) : null}
+      {job.error ? <p className="mt-2 text-red-700">{job.error}</p> : null}
+      {canCancelJob(job) ? (
+        <form action={cancelJob}>
+          <input type="hidden" name="job_id" value={job.id} />
+          <button
+            type="submit"
+            disabled={job.status === "cancelling"}
+            className="mt-3 h-10 rounded-md border border-red-300 px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Cancel Job
+          </button>
+        </form>
+      ) : null}
+    </div>
+  );
+}
+
 export default async function SsrPage({
   searchParams,
 }: {
@@ -406,6 +492,8 @@ export default async function SsrPage({
     selectedJob && !jobs.some((job) => job.id === selectedJob.id)
       ? [selectedJob, ...jobs]
       : jobs;
+  const activeJobs = visibleJobs.filter((job) => !terminalJobStatuses.has(job.status));
+  const pastJobs = visibleJobs.filter((job) => terminalJobStatuses.has(job.status));
 
   return (
     <main className="min-h-screen bg-neutral-50 px-5 py-6 text-neutral-950 sm:px-8">
@@ -435,102 +523,37 @@ export default async function SsrPage({
 
         <aside className="space-y-4">
           <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-semibold">Jobs</h2>
-            {visibleJobs.length ? (
-              <div className="mt-3 max-h-[36.75rem] space-y-3 overflow-y-auto pr-1">
-                {visibleJobs.map((job) => (
-                  <div key={job.id} className="rounded-md border border-neutral-200 p-3 text-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-medium capitalize">{job.status}</p>
-                      {formatDateTime(job.created_at) ? (
-                        <p className="text-xs text-neutral-500">{formatDateTime(job.created_at)}</p>
-                      ) : null}
-                    </div>
-                    <p className="mt-2 break-all text-xs text-neutral-600">
-                      {job.id}
-                    </p>
-                    {job.reservation ? (
-                      <div className="mt-3 space-y-2 rounded-md bg-neutral-50 p-3">
-                        <div>
-                          <p className="font-medium">{reservationTitle(job.reservation)}</p>
-                          {job.reservation.venue_location ? (
-                            <p className="text-xs text-neutral-500">
-                              {job.reservation.venue_location}
-                            </p>
-                          ) : null}
-                        </div>
-                        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-                          {job.reservation.party_size ? (
-                            <>
-                              <dt className="text-neutral-500">Party</dt>
-                              <dd className="font-medium">{job.reservation.party_size}</dd>
-                            </>
-                          ) : null}
-                          {reservationDate(job.reservation) ? (
-                            <>
-                              <dt className="text-neutral-500">Date</dt>
-                              <dd className="font-medium">
-                                {reservationDate(job.reservation)}
-                              </dd>
-                            </>
-                          ) : null}
-                          {job.reservation.ideal_time ? (
-                            <>
-                              <dt className="text-neutral-500">Time</dt>
-                              <dd className="font-medium">{job.reservation.ideal_time}</dd>
-                            </>
-                          ) : null}
-                          {job.reservation.expected_drop_time ? (
-                            <>
-                              <dt className="text-neutral-500">Drop</dt>
-                              <dd className="font-medium">
-                                {job.reservation.expected_drop_time}
-                              </dd>
-                            </>
-                          ) : null}
-                          {job.reservation.preferred_type ? (
-                            <>
-                              <dt className="text-neutral-500">Seating</dt>
-                              <dd className="font-medium">
-                                {job.reservation.preferred_type}
-                              </dd>
-                            </>
-                          ) : null}
-                          {job.reservation.method ? (
-                            <>
-                              <dt className="text-neutral-500">Method</dt>
-                              <dd className="font-medium capitalize">
-                                {job.reservation.method}
-                              </dd>
-                            </>
-                          ) : null}
-                        </dl>
-                      </div>
-                    ) : null}
-                    {job.reservation_token ? (
-                      <p className="mt-2 break-all">
-                        <span className="font-medium">Token:</span> {job.reservation_token}
-                      </p>
-                    ) : null}
-                    {job.error ? <p className="mt-2 text-red-700">{job.error}</p> : null}
-                    {canCancelJob(job) ? (
-                      <form action={cancelJob}>
-                        <input type="hidden" name="job_id" value={job.id} />
-                        <button
-                          type="submit"
-                          disabled={job.status === "cancelling"}
-                          className="mt-3 h-10 rounded-md border border-red-300 px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Cancel Job
-                        </button>
-                      </form>
-                    ) : null}
-                  </div>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold">Active Jobs</h2>
+              <span className="text-sm text-neutral-500">{activeJobs.length}</span>
+            </div>
+            {activeJobs.length ? (
+              <div className="mt-3 max-h-[28rem] space-y-3 overflow-y-auto pr-1">
+                {activeJobs.map((job) => (
+                  <JobCard key={job.id} job={job} />
                 ))}
               </div>
             ) : (
-              <p className="mt-3 text-sm text-neutral-600">No jobs yet.</p>
+              <p className="mt-3 text-sm text-neutral-600">No active jobs.</p>
             )}
+          </section>
+
+          <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
+            <details>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-lg font-semibold">
+                <span>View Past Jobs</span>
+                <span className="text-sm font-normal text-neutral-500">{pastJobs.length}</span>
+              </summary>
+              {pastJobs.length ? (
+                <div className="mt-3 max-h-[28rem] space-y-3 overflow-y-auto pr-1">
+                  {pastJobs.map((job) => (
+                    <JobCard key={job.id} job={job} />
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-neutral-600">No past jobs.</p>
+              )}
+            </details>
           </section>
 
           <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-sm">
