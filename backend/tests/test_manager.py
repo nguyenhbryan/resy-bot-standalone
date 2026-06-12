@@ -1,6 +1,6 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 from zoneinfo import ZoneInfo
 
 from resy_bot.errors import NoSlotsError, ExhaustedRetriesError
@@ -23,6 +23,7 @@ from tests.factories import (
     ReservationRetriesConfigFactory,
     TimedReservationRequestFactory,
     ReservationRequestDaysInAdvanceFactory,
+    MonitorReservationRequestFactory,
 )
 
 
@@ -200,6 +201,72 @@ def test_check_slots_with_venue_loads_name_for_venue_id():
     assert returned_slots == slots
     assert venue.name == "Southeast Impression"
     mock_api_access.get_venue_config.assert_called_once_with("74751")
+
+
+def test_check_slots_by_date_checks_each_monitor_date():
+    config = ResyConfigFactory.create()
+    retries_config = ReservationRetriesConfigFactory.create()
+    monitor_dates = [date(2026, 7, 1), date(2026, 7, 2)]
+    request = MonitorReservationRequestFactory.create(
+        venue_id="74751",
+        monitor_dates=monitor_dates,
+    )
+    mock_api_access = MagicMock()
+    mock_api_access.get_venue_config.return_value = None
+    first_date_slots = SlotFactory.create_batch(1)
+    second_date_slots = SlotFactory.create_batch(2)
+    mock_api_access.find_booking_slots.side_effect = [
+        first_date_slots,
+        second_date_slots,
+    ]
+    mock_selector = MagicMock()
+
+    manager = ResyManager(config, mock_api_access, mock_selector, retries_config)
+
+    all_slots, _, slots_by_date = manager.check_slots_by_date(request)
+
+    assert all_slots == [*first_date_slots, *second_date_slots]
+    assert slots_by_date == {
+        "2026-07-01": first_date_slots,
+        "2026-07-02": second_date_slots,
+    }
+    assert mock_api_access.find_booking_slots.call_args_list == [
+        call(FindRequestBody(venue_id="74751", party_size=request.party_size, day="2026-07-01")),
+        call(FindRequestBody(venue_id="74751", party_size=request.party_size, day="2026-07-02")),
+    ]
+
+
+def test_make_reservation_uses_explicit_target_date():
+    config = ResyConfigFactory.create()
+    retries_config = ReservationRetriesConfigFactory.create()
+    request = MonitorReservationRequestFactory.create(
+        venue_id="74751",
+        monitor_dates=[date(2026, 7, 1), date(2026, 7, 2)],
+    )
+    target_date = date(2026, 7, 2)
+    mock_api_access = MagicMock()
+    slots = SlotFactory.create_batch(3)
+    mock_api_access.find_booking_slots.return_value = slots
+    details_response = DetailsResponseBodyFactory.create()
+    mock_api_access.get_booking_token.return_value = details_response
+    mock_selector = MagicMock()
+    mock_selector.select.return_value = slots[0]
+    manager = ResyManager(config, mock_api_access, mock_selector, retries_config)
+
+    manager.make_reservation(request, target_date)
+
+    mock_api_access.find_booking_slots.assert_called_once_with(
+        FindRequestBody(venue_id="74751", party_size=request.party_size, day="2026-07-02")
+    )
+    selector_request = mock_selector.select.call_args.args[1]
+    assert selector_request.target_date == target_date
+    mock_api_access.get_booking_token.assert_called_once_with(
+        DetailsRequestBody(
+            config_id=slots[0].config.token,
+            day="2026-07-02",
+            party_size=request.party_size,
+        )
+    )
 
 
 def test_resolve_reservation_request_uses_official_venue_name_for_venue_id():

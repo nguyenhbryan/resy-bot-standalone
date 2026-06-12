@@ -1,12 +1,15 @@
 from datetime import date
+from unittest.mock import MagicMock, call
 
 from fastapi.testclient import TestClient
 
 import app.main as main_module
+import app.services.reservation_service as reservation_service
 from app.main import app
 from resy_bot.errors import NoSlotsError
 from resy_bot.models import ResolvedVenue
 from tests.factories import (
+    MonitorReservationRequestFactory,
     ReservationRequestFactory,
     SlotFactory,
     TimedReservationRequestFactory,
@@ -109,6 +112,7 @@ def test_reserve_creates_job(monkeypatch):
         "party_size": 4,
         "ideal_date": "2026-07-15",
         "days_in_advance": None,
+        "monitor_dates": None,
         "ideal_time": "7:30 PM",
         "window_hours": 1,
         "prefer_early": request.reservation_request.prefer_early,
@@ -216,6 +220,51 @@ def test_reserve_stores_resolved_venue_details(monkeypatch):
     assert job["reservation"]["venue_location"] == "New York"
     assert captured["request"]["reservation_request"]["venue_name"] == "Carbone"
     assert captured["request"]["reservation_request"]["venue_id"] == "9802"
+
+
+def test_slots_returns_monitor_slots_by_date(monkeypatch):
+    first_slot = SlotFactory.create()
+    second_slot = SlotFactory.create()
+    request = MonitorReservationRequestFactory.create(
+        monitor_dates=[date(2026, 7, 1), date(2026, 7, 2)],
+    )
+
+    monkeypatch.setattr(
+        main_module.reservation_service,
+        "check_slots_with_venue",
+        lambda _: (
+            [first_slot, second_slot],
+            ResolvedVenue(venue_id="9802", name="Test Venue"),
+            {
+                "2026-07-01": [first_slot],
+                "2026-07-02": [second_slot],
+            },
+        ),
+    )
+
+    response = client.post("/slots", json=request.model_dump(mode="json"))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["venue"]["name"] == "Test Venue"
+    assert body["slots_by_date"]["2026-07-01"][0]["config"]["token"] == first_slot.config.token
+    assert body["slots_by_date"]["2026-07-02"][0]["config"]["token"] == second_slot.config.token
+
+
+def test_monitor_reserve_books_first_acceptable_date():
+    request = MonitorReservationRequestFactory.create(
+        monitor_dates=[date(2026, 7, 1), date(2026, 7, 2)],
+    )
+    manager = MagicMock()
+    manager.make_reservation.side_effect = [NoSlotsError("No acceptable slots found"), "token"]
+
+    token = reservation_service.monitor_reserve(manager, request)
+
+    assert token == "token"
+    assert manager.make_reservation.call_args_list == [
+        call(request, date(2026, 7, 1)),
+        call(request, date(2026, 7, 2)),
+    ]
 
 
 def test_get_job_not_found():

@@ -3,7 +3,7 @@ from os import environ
 from threading import Event
 
 from app.env import load_backend_env
-from resy_bot.errors import ReservationCancelledError
+from resy_bot.errors import NoSlotsError, ReservationCancelledError
 from resy_bot.logging_config import logging
 from resy_bot.manager import ResyManager
 from resy_bot.models import (
@@ -50,12 +50,18 @@ def check_slots(reservation_request: dict) -> list:
     return manager.checkSlots(request)
 
 
-def check_slots_with_venue(reservation_request: dict) -> tuple[list[Slot], ResolvedVenue | None]:
+def check_slots_with_venue(
+    reservation_request: dict,
+) -> tuple[list[Slot], ResolvedVenue | None, dict[str, list[Slot]]]:
     config = load_resy_config()
     manager = ResyManager.build(config)
     request = ReservationRequest(**reservation_request)
 
-    return manager.check_slots_with_venue(request)
+    if request.method == BookingMethod.MONITOR:
+        return manager.check_slots_by_date(request)
+
+    slots, venue = manager.check_slots_with_venue(request)
+    return slots, venue, {}
 
 
 def resolve_timed_reservation_request(reservation_request: dict) -> TimedReservationRequest:
@@ -103,18 +109,17 @@ def monitor_reserve(
     request: ReservationRequest,
     cancel_event: Event | None = None,
 ) -> str:
-    slots = []
-    while not slots:
+    while True:
         if cancel_event and cancel_event.is_set():
             raise ReservationCancelledError("Reservation job was cancelled")
 
-        slots = manager.checkSlots(request)
-        if slots:
-            break
+        for target_date in request.target_dates:
+            try:
+                return manager.make_reservation(request, target_date)
+            except NoSlotsError:
+                continue
 
         if cancel_event:
-            cancel_event.wait(5)
+            cancel_event.wait(manager._seconds_between_slot_checks())
         else:
-            time.sleep(5)
-
-    return manager.make_reservation_with_retries(request, cancel_event)
+            time.sleep(manager._seconds_between_slot_checks())

@@ -65,6 +65,7 @@ class ReservationDetails(BaseModel):
     party_size: int | None = None
     ideal_date: str | None = None
     days_in_advance: int | None = None
+    monitor_dates: list[str] | None = None
     ideal_time: str | None = None
     window_hours: int | None = None
     prefer_early: bool | None = None
@@ -86,6 +87,7 @@ class ReservationJob(BaseModel):
 class SlotsResponse(BaseModel):
     venue: ResolvedVenue | None = None
     slots: list[Slot] = Field(default_factory=list)
+    slots_by_date: dict[str, list[Slot]] = Field(default_factory=dict)
 
 
 cancellation_events: dict[str, Event] = {}
@@ -131,6 +133,11 @@ def _job_reservation_details(job: StoredJob) -> ReservationDetails | None:
     if not isinstance(reservation_request, dict):
         return None
 
+    monitor_dates = reservation_request.get("monitor_dates")
+    if monitor_dates is None and reservation_request.get("method") == "monitor":
+        ideal_date = reservation_request.get("ideal_date")
+        monitor_dates = [ideal_date] if ideal_date else None
+
     return ReservationDetails(
         restaurant_name=reservation_request.get("venue_name"),
         venue_id=reservation_request.get("venue_id"),
@@ -138,6 +145,7 @@ def _job_reservation_details(job: StoredJob) -> ReservationDetails | None:
         party_size=reservation_request.get("party_size"),
         ideal_date=reservation_request.get("ideal_date"),
         days_in_advance=reservation_request.get("days_in_advance"),
+        monitor_dates=monitor_dates,
         ideal_time=_format_time(
             reservation_request.get("ideal_hour"),
             reservation_request.get("ideal_minute"),
@@ -244,14 +252,20 @@ def health() -> dict[str, str]:
 @app.post("/slots", response_model=SlotsResponse)
 async def slots(request: ReservationRequest) -> SlotsResponse:
     try:
-        found_slots, venue = await run_in_threadpool(
+        result = await run_in_threadpool(
             reservation_service.check_slots_with_venue,
             request.model_dump(),
         )
     except Exception as exc:
         raise _map_exception(exc) from exc
 
-    return SlotsResponse(venue=venue, slots=found_slots)
+    if len(result) == 2:
+        found_slots, venue = result
+        slots_by_date = {}
+    else:
+        found_slots, venue, slots_by_date = result
+
+    return SlotsResponse(venue=venue, slots=found_slots, slots_by_date=slots_by_date)
 
 
 @app.post("/reserve", response_model=ReserveResponse, status_code=202)

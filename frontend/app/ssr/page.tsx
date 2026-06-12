@@ -29,6 +29,7 @@ type ApiVenue = {
 type SlotCheckResult = {
   venue?: ApiVenue | null;
   slots: ApiSlot[];
+  slots_by_date?: Record<string, ApiSlot[]>;
 };
 
 type JobStatus =
@@ -46,6 +47,7 @@ type ReservationDetails = {
   party_size?: number | null;
   ideal_date?: string | null;
   days_in_advance?: number | null;
+  monitor_dates?: string[] | null;
   ideal_time?: string | null;
   window_hours?: number | null;
   prefer_early?: boolean | null;
@@ -107,16 +109,25 @@ function getTimeParts(formData: FormData, key: string) {
 }
 
 function buildReservationRequest(formData: FormData) {
+  const method = getText(formData, "method");
   const preferredType = getText(formData, "preferred_type");
   const idealDate = getText(formData, "ideal_date");
   const daysInAdvance = getText(formData, "days_in_advance");
+  const monitorDates = formData
+    .getAll("monitor_dates")
+    .map((value) => String(value).trim())
+    .filter(Boolean);
   const idealTime = getTimeParts(formData, "ideal_time");
 
-  if (!idealDate && !daysInAdvance) {
+  if (method === "monitor" && !monitorDates.length) {
+    throw new Error("Choose at least one monitor date.");
+  }
+
+  if (method !== "monitor" && !idealDate && !daysInAdvance) {
     throw new Error("Choose either a reservation date or days in advance.");
   }
 
-  if (idealDate && daysInAdvance) {
+  if (method !== "monitor" && idealDate && daysInAdvance) {
     throw new Error("Use either reservation date or days in advance, not both.");
   }
 
@@ -130,9 +141,13 @@ function buildReservationRequest(formData: FormData) {
     window_hours: getNumber(formData, "window_hours"),
     prefer_early: formData.get("prefer_early") === "on",
     preferred_type: preferredType || null,
-    ideal_date: idealDate || null,
-    days_in_advance: idealDate || !daysInAdvance ? null : Number(daysInAdvance),
-    method: getText(formData, "method"),
+    ideal_date: method === "monitor" ? null : idealDate || null,
+    days_in_advance:
+      method === "monitor" || idealDate || !daysInAdvance
+        ? null
+        : Number(daysInAdvance),
+    monitor_dates: method === "monitor" ? monitorDates : null,
+    method,
   };
 }
 
@@ -349,6 +364,19 @@ function reservationDate(reservation?: ReservationDetails | null) {
     return `${reservation.days_in_advance} days out`;
   }
 
+  if (reservation.monitor_dates?.length) {
+    if (reservation.monitor_dates.length === 1) {
+      return formatDate(reservation.monitor_dates[0]);
+    }
+
+    const firstDate = formatDate(reservation.monitor_dates[0]);
+    const lastDate = formatDate(
+      reservation.monitor_dates[reservation.monitor_dates.length - 1]
+    );
+
+    return `${firstDate} - ${lastDate} (${reservation.monitor_dates.length} dates)`;
+  }
+
   return null;
 }
 
@@ -368,6 +396,8 @@ export default async function SsrPage({
   const params = await searchParams;
   const slotResult = decodeSlotResult(params?.slots);
   const slots = slotResult.slots;
+  const slotsByDate = slotResult.slots_by_date ?? {};
+  const slotDateEntries = Object.entries(slotsByDate);
   const [selectedJob, jobs] = await Promise.all([getJob(params?.job), getJobs()]);
   const health = await getHealth();
   const error = typeof params?.error === "string" ? params.error : null;
@@ -516,7 +546,27 @@ export default async function SsrPage({
               </p>
             ) : null}
             <div className="mt-3 space-y-3">
-              {slots.length ? (
+              {slotDateEntries.length ? (
+                slotDateEntries.map(([day, dateSlots]) => (
+                  <div key={day} className="rounded-md border border-neutral-200 p-3">
+                    <p className="text-sm font-semibold">{formatDate(day)}</p>
+                    <div className="mt-2 space-y-2">
+                      {dateSlots.length ? (
+                        dateSlots.map((slot) => (
+                          <div key={slot.config.token} className="text-sm">
+                            <p className="font-medium">
+                              {new Date(slot.date.start).toLocaleString()}
+                            </p>
+                            <p className="mt-1 text-neutral-600">{slot.config.type}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-sm text-neutral-600">No slots.</p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : slots.length ? (
                 slots.map((slot) => (
                   <div key={slot.config.token} className="rounded-md border border-neutral-200 p-3 text-sm">
                     <p className="font-medium">{new Date(slot.date.start).toLocaleString()}</p>

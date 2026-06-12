@@ -1,5 +1,5 @@
 import time
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from os import environ
 from threading import Event
 from typing import List
@@ -16,6 +16,7 @@ from resy_bot.constants import (
     SECONDS_TO_WAIT_BETWEEN_RETRIES,
 )
 from resy_bot.models import (
+    BookingMethod,
     ResyConfig,
     ReservationRequest,
     ResolvedVenue,
@@ -162,9 +163,25 @@ class ResyManager:
 
         return self._to_resolved_venue(candidate)
 
-    def checkSlots(self, reservation_request: ReservationRequest) -> List[Slot]:
+    def _request_for_date(
+        self, reservation_request: ReservationRequest, target_date: date
+    ) -> ReservationRequest:
+        return reservation_request.model_copy(
+            update={
+                "ideal_date": target_date,
+                "days_in_advance": None,
+                "monitor_dates": None,
+                "method": BookingMethod.SCHEDULED,
+            }
+        )
+
+    def checkSlots(
+        self,
+        reservation_request: ReservationRequest,
+        target_date: date | None = None,
+    ) -> List[Slot]:
         reservation_request, _ = self._resolve_request_venue(reservation_request)
-        body = build_find_request_body(reservation_request)
+        body = build_find_request_body(reservation_request, target_date)
         slots = self.api_access.find_booking_slots(body)
         return slots;
 
@@ -179,10 +196,36 @@ class ResyManager:
         slots = self.api_access.find_booking_slots(body)
         return slots, venue
 
+    def check_slots_by_date(
+        self, reservation_request: ReservationRequest
+    ) -> tuple[List[Slot], ResolvedVenue | None, dict[str, List[Slot]]]:
+        reservation_request, venue = self._resolve_request_venue(
+            reservation_request,
+            include_venue_info=True,
+        )
+        slots_by_date: dict[str, List[Slot]] = {}
+        all_slots: List[Slot] = []
 
-    def make_reservation(self, reservation_request: ReservationRequest) -> str:
+        for target_date in reservation_request.target_dates:
+            slots = self.checkSlots(reservation_request, target_date)
+            day = target_date.strftime("%Y-%m-%d")
+            slots_by_date[day] = slots
+            all_slots.extend(slots)
+
+        return all_slots, venue, slots_by_date
+
+    def make_reservation(
+        self,
+        reservation_request: ReservationRequest,
+        target_date: date | None = None,
+    ) -> str:
         reservation_request, _ = self._resolve_request_venue(reservation_request)
-        body = build_find_request_body(reservation_request)
+        selector_request = (
+            self._request_for_date(reservation_request, target_date)
+            if target_date
+            else reservation_request
+        )
+        body = build_find_request_body(reservation_request, target_date)
 
         slots = self.api_access.find_booking_slots(body)
         logger.info(f"Returned: {slots}")
@@ -193,11 +236,11 @@ class ResyManager:
             logger.info(len(slots))
             logger.info(slots)
 
-        selected_slot = self.selector.select(slots, reservation_request)
+        selected_slot = self.selector.select(slots, selector_request)
 
         logger.info(selected_slot)
         details_request = build_get_slot_details_body(
-            reservation_request, selected_slot
+            reservation_request, selected_slot, target_date
         )
         logger.info(details_request)
         token = self.api_access.get_booking_token(details_request)
@@ -211,13 +254,14 @@ class ResyManager:
     def make_reservation_with_retries(
         self,
         reservation_request: ReservationRequest,
+        target_date: date | None = None,
         cancel_event: Event | None = None,
     ) -> str:
         for _ in range(self.retry_config.n_retries):
             _raise_if_cancelled(cancel_event)
 
             try:
-                return self.make_reservation(reservation_request)
+                return self.make_reservation(reservation_request, target_date)
 
             except NoSlotsError:
                 logger.info(

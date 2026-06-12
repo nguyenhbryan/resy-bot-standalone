@@ -31,6 +31,7 @@ class ReservationRequest(BaseModel):
     preferred_type: Optional[str]
     ideal_date: Optional[date] = None
     days_in_advance: Optional[int] = None
+    monitor_dates: Optional[List[date]] = None
     method: BookingMethod
 
     @model_validator(mode="before")
@@ -45,8 +46,51 @@ class ReservationRequest(BaseModel):
                 except Exception:
                     continue
 
+        monitor_dates = values.get("monitor_dates")
+        if monitor_dates is not None:
+            if not isinstance(monitor_dates, list):
+                monitor_dates = [monitor_dates]
+
+            parsed_monitor_dates = []
+            seen_monitor_dates = set()
+            for monitor_date in monitor_dates:
+                parsed_date = monitor_date
+                if isinstance(monitor_date, str):
+                    parsed_date = None
+                    for fmt in ("%Y-%m-%d", "%m-%d-%Y", "%m/%d/%Y"):
+                        try:
+                            parsed_date = datetime.strptime(monitor_date, fmt).date()
+                            break
+                        except Exception:
+                            continue
+
+                if isinstance(parsed_date, datetime):
+                    parsed_date = parsed_date.date()
+
+                if isinstance(parsed_date, date) and parsed_date not in seen_monitor_dates:
+                    parsed_monitor_dates.append(parsed_date)
+                    seen_monitor_dates.add(parsed_date)
+
+            values["monitor_dates"] = parsed_monitor_dates or None
+
+        method = values.get("method")
+        if method == BookingMethod.MONITOR or method == BookingMethod.MONITOR.value:
+            if values.get("days_in_advance") is not None:
+                raise ValueError("Monitor requests must use monitor_dates, not days_in_advance")
+
+            if not values.get("monitor_dates") and values.get("ideal_date") is not None:
+                values["monitor_dates"] = [values["ideal_date"]]
+
+            if not values.get("monitor_dates"):
+                raise ValueError("Monitor requests must provide at least one monitor date")
+
+            return cls._validate_venue(values)
+
         has_date = values.get("ideal_date") is not None
         has_waiting_pd = values.get("days_in_advance") is not None
+
+        if values.get("monitor_dates"):
+            raise ValueError("Scheduled requests must use ideal_date or days_in_advance, not monitor_dates")
 
         if has_date and has_waiting_pd:
             raise ValueError("Must only provide one of ideal_date or days_in_advance")
@@ -55,6 +99,10 @@ class ReservationRequest(BaseModel):
         else:
             raise ValueError("Must provide ideal_date or days_in_advance")
 
+        return cls._validate_venue(values)
+
+    @classmethod
+    def _validate_venue(cls, values: Dict) -> Dict:
         venue_id = values.get("venue_id")
         venue_name = values.get("venue_name")
 
@@ -86,7 +134,19 @@ class ReservationRequest(BaseModel):
         if self.days_in_advance:
             return date.today() + timedelta(days=self.days_in_advance)
 
+        if self.monitor_dates:
+            return self.monitor_dates[0]
+
         raise ValueError("No date")
+
+    @property
+    def target_dates(self) -> List[date]:
+        if self.method == BookingMethod.MONITOR:
+            if not self.monitor_dates:
+                raise ValueError("No monitor dates")
+            return self.monitor_dates
+
+        return [self.target_date]
 
 
 class ReservationRetriesConfig(BaseModel):
