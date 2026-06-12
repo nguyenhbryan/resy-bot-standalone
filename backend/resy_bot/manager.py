@@ -35,6 +35,8 @@ logger = logging.getLogger(__name__)
 logger.setLevel("INFO")
 
 DEFAULT_APP_TIMEZONE = "America/New_York"
+FINAL_DROP_POLLING_WINDOW = timedelta(minutes=1)
+MIN_SECONDS_BETWEEN_SLOT_CHECKS = 1.0
 
 
 def _load_app_timezone() -> ZoneInfo:
@@ -233,6 +235,21 @@ class ResyManager:
     def _now(self) -> datetime:
         return datetime.now(UTC)
 
+    def _seconds_between_slot_checks(self) -> float:
+        return max(
+            MIN_SECONDS_BETWEEN_SLOT_CHECKS,
+            self.retry_config.seconds_between_retries,
+        )
+
+    def _wait(self, seconds: float, cancel_event: Event | None = None) -> None:
+        if seconds <= 0:
+            return
+
+        if cancel_event:
+            cancel_event.wait(seconds)
+        else:
+            time.sleep(seconds)
+
     def _get_drop_time(
         self,
         reservation_request: TimedReservationRequest,
@@ -262,24 +279,44 @@ class ResyManager:
         cycle until we hit the opening time, then run & return the reservation
         """
         drop_time = self._get_drop_time(reservation_request)
-        last_check = self._now()
+        polling_starts_at = drop_time - FINAL_DROP_POLLING_WINDOW
+        status_logged_at = self._now()
+        last_slot_check: datetime | None = None
+        post_drop_attempts = 0
 
         while True:
             _raise_if_cancelled(cancel_event)
 
             now = self._now()
-            if now < drop_time:
-                if now - last_check > timedelta(seconds=10):
+            if now < polling_starts_at:
+                if now - status_logged_at > timedelta(seconds=10):
                     logger.info(f"{now}: still waiting")
-                    last_check = now
-                if cancel_event:
-                    cancel_event.wait(0.25)
-                else:
-                    time.sleep(0.25)
+                    status_logged_at = now
+                self._wait(0.25, cancel_event)
                 continue
 
-            logger.info(f"time reached, making a reservation now! {self._now()}")
-            return self.make_reservation_with_retries(
-                reservation_request.reservation_request,
-                cancel_event,
-            )
+            seconds_between_checks = self._seconds_between_slot_checks()
+            if last_slot_check:
+                seconds_since_last_check = (now - last_slot_check).total_seconds()
+                if seconds_since_last_check < seconds_between_checks:
+                    self._wait(
+                        seconds_between_checks - seconds_since_last_check,
+                        cancel_event,
+                    )
+                    continue
+
+            logger.info(f"checking for slots now! {now}")
+            last_slot_check = now
+
+            try:
+                return self.make_reservation(reservation_request.reservation_request)
+            except NoSlotsError:
+                if now >= drop_time:
+                    post_drop_attempts += 1
+                    if post_drop_attempts >= self.retry_config.n_retries:
+                        raise ExhaustedRetriesError(
+                            f"Retried {self.retry_config.n_retries} times, "
+                            "without finding a slot"
+                        )
+
+                logger.info(f"no slots, retrying; currently {now.isoformat()}")

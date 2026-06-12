@@ -354,7 +354,7 @@ def test_get_drop_time_uses_next_day_when_drop_time_has_passed():
     assert drop_time == datetime(2026, 6, 11, 14, 30, tzinfo=UTC)
 
 
-@patch("resy_bot.manager.ResyManager.make_reservation_with_retries")
+@patch("resy_bot.manager.ResyManager.make_reservation")
 def test_make_reservation_at_opening_time(mock_make_reservation):
     now = datetime(2026, 6, 10, 14, 30, 15, tzinfo=UTC)
     request = TimedReservationRequestFactory.create(
@@ -382,3 +382,93 @@ def test_make_reservation_at_opening_time(mock_make_reservation):
         manager.make_reservation_at_opening_time(request)
 
     mock_make_reservation.assert_called_once()
+
+
+@patch("resy_bot.manager.ResyManager.make_reservation")
+def test_make_reservation_at_opening_time_checks_slots_in_final_minute(
+    mock_make_reservation,
+):
+    drop_time = datetime(2026, 6, 10, 14, 30, tzinfo=UTC)
+    request = TimedReservationRequestFactory.create(
+        expected_drop_hour=drop_time.astimezone(ZoneInfo("America/New_York")).hour,
+        expected_drop_minute=drop_time.astimezone(ZoneInfo("America/New_York")).minute,
+    )
+
+    config = ResyConfigFactory.create()
+    mock_api_access = MagicMock()
+    mock_selector = MagicMock()
+    retry_config = ReservationRetriesConfig(
+        seconds_between_retries=0.1,
+        n_retries=10,
+    )
+
+    manager = ResyManager(
+        config,
+        mock_api_access,
+        mock_selector,
+        retry_config,
+        app_timezone=ZoneInfo("America/New_York"),
+    )
+    mock_make_reservation.side_effect = [NoSlotsError, "reservation-token"]
+    now_values = [
+        drop_time - timedelta(seconds=50),
+        drop_time - timedelta(seconds=50),
+        drop_time - timedelta(seconds=50),
+        drop_time - timedelta(seconds=49, milliseconds=500),
+        drop_time - timedelta(seconds=49),
+    ]
+
+    with (
+        patch.object(manager, "_now", side_effect=now_values),
+        patch.object(manager, "_wait") as mock_wait,
+    ):
+        token = manager.make_reservation_at_opening_time(request)
+
+    assert token == "reservation-token"
+    assert mock_make_reservation.call_count == 2
+    mock_wait.assert_called_once_with(0.5, None)
+
+
+@patch("resy_bot.manager.ResyManager.make_reservation")
+def test_make_reservation_at_opening_time_honors_retry_limit_after_drop(
+    mock_make_reservation,
+):
+    drop_time = datetime(2026, 6, 10, 14, 30, tzinfo=UTC)
+    request = TimedReservationRequestFactory.create(
+        expected_drop_hour=drop_time.astimezone(ZoneInfo("America/New_York")).hour,
+        expected_drop_minute=drop_time.astimezone(ZoneInfo("America/New_York")).minute,
+    )
+
+    config = ResyConfigFactory.create()
+    mock_api_access = MagicMock()
+    mock_selector = MagicMock()
+    retry_config = ReservationRetriesConfig(
+        seconds_between_retries=0.1,
+        n_retries=2,
+    )
+
+    manager = ResyManager(
+        config,
+        mock_api_access,
+        mock_selector,
+        retry_config,
+        app_timezone=ZoneInfo("America/New_York"),
+    )
+    mock_make_reservation.side_effect = NoSlotsError
+    now_values = [
+        drop_time,
+        drop_time,
+        drop_time,
+        drop_time,
+        drop_time + timedelta(seconds=1),
+    ]
+
+    with (
+        pytest.raises(ExhaustedRetriesError),
+        patch.object(manager, "_now", side_effect=now_values),
+        patch.object(manager, "_wait") as mock_wait,
+    ):
+        manager.make_reservation_at_opening_time(request)
+
+    assert mock_make_reservation.call_count == 2
+    mock_wait.assert_called_once_with(1.0, None)

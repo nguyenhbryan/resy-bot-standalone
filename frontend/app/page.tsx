@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { cookies } from "next/headers";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 function getAccessToken() {
@@ -90,6 +91,13 @@ export default async function Home({
           >
             Continue
           </button>
+
+          <Link
+            href="/demo"
+            className="flex h-11 w-full items-center justify-center rounded-md border border-neutral-700 px-4 text-sm font-semibold text-neutral-100 transition hover:border-emerald-300 hover:text-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-300 focus:ring-offset-2 focus:ring-offset-neutral-950"
+          >
+            View Demo
+          </Link>
         </form>
       </section>
     </main>
